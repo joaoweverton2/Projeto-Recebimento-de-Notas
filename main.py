@@ -31,10 +31,13 @@ app.config['REGISTROS_EXCEL'] = os.path.join(os.path.dirname(os.path.dirname(__f
 # Garantir que os diretórios necessários existam
 for folder in [app.config['UPLOAD_FOLDER'], app.config['DATABASE_FOLDER']]:
     os.makedirs(folder, exist_ok=True)
+    
+# Novo caminho da pasta Data
+caminho_data = r"C:\Users\joao.miranda\OneDrive - VIDEOMAR REDE NORDESTE S A\Área de Trabalho\Projeto-Recebimento-de-Notas\data"    
 
 # Copiar a base de notas para o diretório de dados se não existir
 if not os.path.exists(app.config['BASE_NOTAS']):
-    original_base = '/home/ubuntu/upload/Base de notas.xlsx'
+    original_base = f"{caminho_data}\\Base de notas.xlsx"
     if os.path.exists(original_base):
         import shutil
         shutil.copy(original_base, app.config['BASE_NOTAS'])
