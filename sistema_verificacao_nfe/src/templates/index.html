@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Verificação de Notas Fiscais</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Sistema de Verificação de Notas Fiscais</h1>
+            <p class="subtitle">Verifique se deve abrir JIRA para notas fiscais recebidas</p>
+        </header>
+
+        <main>
+            <section class="form-section">
+                <div class="card">
+                    <h2><i class="fas fa-file-invoice"></i> Verificação de Nota Fiscal</h2>
+                    
+                    <form id="nfeForm" action="/verificar" method="POST">
+                        <div class="form-group">
+                            <label for="uf">UF:</label>
+                            <input type="text" id="uf" name="uf" required maxlength="2" 
+                                   placeholder="Ex: SP" class="uppercase">
+                            <span class="error-message" id="uf-error"></span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="nfe">Número da NFe:</label>
+                            <input type="number" id="nfe" name="nfe" required min="1"
+                                   placeholder="Ex: 123456" oninput="validateNumber(this)">
+                            <span class="error-message" id="nfe-error"></span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="pedido">Número do Pedido:</label>
+                            <input type="number" id="pedido" name="pedido" required min="1"
+                                   placeholder="Ex: 75710" oninput="validateNumber(this)">
+                            <span class="error-message" id="pedido-error"></span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="data_recebimento">Data de Recebimento:</label>
+                            <input type="date" id="data_recebimento" name="data_recebimento" required>
+                            <span class="error-message" id="data-error"></span>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="submit" class="btn primary">
+                                <i class="fas fa-search"></i> Verificar
+                            </button>
+                            <button type="reset" class="btn secondary">
+                                <i class="fas fa-undo"></i> Limpar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+            
+            <section class="result-section" id="resultSection" style="display: none;">
+                <div class="card result-card">
+                    <h2><i class="fas fa-clipboard-check"></i> Resultado da Verificação</h2>
+                    
+                    <div id="loadingIndicator" class="loading">
+                        <div class="spinner"></div>
+                        <p>Processando verificação...</p>
+                    </div>
+                    
+                    <div id="resultContent" style="display: none;">
+                        <div class="result-header">
+                            <span id="resultIcon" class="result-icon"></span>
+                            <h3 id="resultTitle" class="result-title"></h3>
+                        </div>
+                        
+                        <div class="result-details">
+                            <p><strong>UF:</strong> <span id="result-uf"></span></p>
+                            <p><strong>NFe:</strong> <span id="result-nfe"></span></p>
+                            <p><strong>Pedido:</strong> <span id="result-pedido"></span></p>
+                            <p><strong>Data de Recebimento:</strong> <span id="result-data"></span></p>
+                            <p><strong>Data de Planejamento:</strong> <span id="result-planejamento"></span></p>
+                            <p><strong>Decisão:</strong> <span id="result-decisao" class="decision"></span></p>
+                        </div>
+                        
+                        <div class="result-actions">
+                            <button id="newVerificationBtn" class="btn primary">
+                                <i class="fas fa-plus"></i> Nova Verificação
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="errorContent" style="display: none;">
+                        <div class="result-header error">
+                            <span class="result-icon"><i class="fas fa-exclamation-triangle"></i></span>
+                            <h3 class="result-title">Erro na Verificação</h3>
+                        </div>
+                        
+                        <div class="error-message-container">
+                            <p id="errorMessage"></p>
+                        </div>
+                        
+                        <div class="result-actions">
+                            <button id="tryAgainBtn" class="btn primary">
+                                <i class="fas fa-redo"></i> Tentar Novamente
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section class="info-section">
+                <div class="card info-card">
+                    <h2><i class="fas fa-info-circle"></i> Informações</h2>
+                    <div class="info-content">
+                        <p>Este sistema verifica automaticamente se um chamado JIRA deve ser aberto para notas fiscais recebidas, baseado nos seguintes critérios:</p>
+                        <ul>
+                            <li>A combinação de UF, NFe e Pedido deve existir na base de dados</li>
+                            <li>Se o mês e ano da data de planejamento forem menores ou iguais aos da data de recebimento, então "Pode abrir JIRA"</li>
+                            <li>Caso contrário, "Abrir JIRA após o fechamento do mês"</li>
+                        </ul>
+                        <p>Todos os dados inseridos são armazenados para consultas futuras.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>&copy; 2025 Sistema de Verificação de Notas Fiscais</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
