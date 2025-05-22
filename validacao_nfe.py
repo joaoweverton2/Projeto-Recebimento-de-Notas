@@ -19,6 +19,9 @@ except:
         locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil')
     except:
         pass  # Se não conseguir configurar o locale, usaremos uma abordagem alternativa
+    
+# Novo caminho da pasta Data
+caminho_data = r"C:\Users\joao.miranda\OneDrive - VIDEOMAR REDE NORDESTE S A\Área de Trabalho\Projeto-Recebimento-de-Notas\data" 
 
 # Mapeamento de nomes de meses em português para números
 MESES = {
@@ -161,7 +164,7 @@ def verificar_abertura_jira(data_planejamento: str, data_recebimento: str) -> st
         return "Abrir JIRA após o fechamento do mês"
 
 def processar_validacao(uf: str, nfe: str, pedido: str, data_recebimento: str, 
-                       caminho_base: str) -> Dict[str, Any]:
+                    caminho_base: str) -> Dict[str, Any]:
     """
     Processa a validação completa de uma nota fiscal.
     
@@ -286,6 +289,6 @@ def exportar_registros_para_excel(caminho_csv: str, caminho_excel: str) -> bool:
 # Função principal para testes
 if __name__ == "__main__":
     # Exemplo de uso
-    base_path = "/home/ubuntu/upload/Base de notas.xlsx"
+    base_path = f"{caminho_data}\\Base de notas.xlsx"
     resultado = processar_validacao("RN", "15733", "75710", "2025-05-15", base_path)
     print(resultado)
