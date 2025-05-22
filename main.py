@@ -12,6 +12,10 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 
+from pathlib import Path
+# Adiciona o diretório atual ao PATH do Python
+sys.path.append(str(Path(__file__).parent))
+
 # Adicionar o diretório do projeto ao path para importar o módulo de validação
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from validacao_nfe import processar_validacao, salvar_registro, exportar_registros_para_excel
