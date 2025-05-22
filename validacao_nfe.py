@@ -161,7 +161,7 @@ def verificar_abertura_jira(data_planejamento: str, data_recebimento: str) -> st
         return "Abrir JIRA após o fechamento do mês"
 
 def processar_validacao(uf: str, nfe: str, pedido: str, data_recebimento: str, 
-                       caminho_base: str) -> Dict[str, Any]:
+                        caminho_base: str) -> Dict[str, Any]:
     """
     Processa a validação completa de uma nota fiscal.
     
