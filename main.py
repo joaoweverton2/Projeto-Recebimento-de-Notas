@@ -24,7 +24,7 @@ from validacao_nfe import processar_validacao, salvar_registro, exportar_registr
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
 app.config['DATABASE_FOLDER'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-app.config['BASE_NOTAS'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'Base de notas.xlsx')
+app.config['BASE_NOTAS'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'Base_de_notas.xlsx')
 app.config['REGISTROS_CSV'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'registros.csv')
 app.config['REGISTROS_EXCEL'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'registros.xlsx')
 
