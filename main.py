@@ -5,10 +5,17 @@ Aplicação principal para o Sistema de Verificação de Notas Fiscais
 import os
 import sys
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from pathlib import Path
+
+# Configurações da aplicação
+app = Flask(__name__)
+
+# Configurar timezone padrão
+app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
 
 # Configurações de caminhos ABSOLUTAMENTE CONFIAVEIS
 BASE_DIR = Path(__file__).parent.absolute()
@@ -16,9 +23,6 @@ sys.path.insert(0, str(BASE_DIR))
 
 # Importação do módulo de validação
 from validacao_nfe import processar_validacao, salvar_registro, exportar_registros_para_excel
-
-# Configurações da aplicação
-app = Flask(__name__)
 
 # Configuração de caminhos usando pathlib (garante funcionamento em qualquer SO)
 app.config['UPLOAD_FOLDER'] = BASE_DIR / 'uploads'
@@ -60,7 +64,9 @@ def verificar():
         uf = request.form.get('uf', '').strip().upper()
         nfe = request.form.get('nfe', '').strip()
         pedido = request.form.get('pedido', '').strip()
-        data_recebimento = request.form.get('data_recebimento', '').strip()
+        data_recebimento_str = request.form.get('data_recebimento', '').strip()
+        data_recebimento = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
+        data_recebimento = app.config['TIMEZONE'].localize(data_recebimento)
         
         # Validar dados de entrada
         if not all([uf, nfe, pedido, data_recebimento]):

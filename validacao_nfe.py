@@ -10,6 +10,7 @@ import os
 from datetime import datetime
 import locale
 from typing import Dict, Tuple, List, Optional, Any
+import pytz  # Adicione no início do arquivo
 
 # Configurar locale para português brasileiro
 try:
@@ -192,6 +193,11 @@ def processar_validacao(uf: str, nfe: str, pedido: str, data_recebimento: str,
     try:
         # Carrega a base de dados
         base_dados = carregar_base_dados(caminho_base)
+        
+                # ⚠️ ADICIONE ESTE TRECHO PARA CORRIGIR O FUSO HORÁRIO:
+        if 'data' in base_dados.columns:  # Substitua 'data' pelo nome real da coluna
+            base_dados['data'] = pd.to_datetime(base_dados['data']).dt.tz_localize('America/Sao_Paulo')
+        
         if base_dados.empty:
             resultado['mensagem'] = "Erro ao carregar a base de dados"
             return resultado
