@@ -289,6 +289,6 @@ def exportar_registros_para_excel(caminho_csv: str, caminho_excel: str) -> bool:
 # Função principal para testes
 if __name__ == "__main__":
     # Exemplo de uso
-    base_path = f"{caminho_data}\\Base\ de\ notas.xlsx"
+    base_path = f"{caminho_data}\\Base de notas.xlsx"
     resultado = processar_validacao("RN", "15733", "75710", "2025-05-15", base_path)
     print(resultado)
