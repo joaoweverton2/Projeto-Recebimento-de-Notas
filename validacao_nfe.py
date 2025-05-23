@@ -106,36 +106,38 @@ def extrair_mes_ano_recebimento(data_recebimento: str) -> Tuple[int, int]:
         return 0, 0
 
 def validar_nota_fiscal(uf: str, nfe: int, pedido: int, base_dados: pd.DataFrame) -> bool:
-    """
-    Verifica se a combinação de UF, NFe e Pedido existe na base de dados.
-
-    Args:
-        uf: Unidade Federativa da nota fiscal.
-        nfe: Número da nota fiscal (como int).
-        pedido: Número do pedido (como int).
-        base_dados: DataFrame contendo a base de dados de notas fiscais.
-
-    Returns:
-        True se a combinação existir na base de dados, False caso contrário.
-    """
     if base_dados.empty:
+        print("⚠️ Base de dados está vazia!")
         return False
+    
+    print("\n🔍 Dados recebidos para validação:")
+    print(f"UF: '{uf}' | NFe: '{nfe}' | Pedido: '{pedido}'")
+    
+    print("\n📋 Amostra da base de dados (5 primeiras linhas):")
+    print(base_dados.head())
+    
+    print("\n🔎 Procurando correspondência...")
     try:
-        # Garante que as colunas existam antes de filtrar
-        if not all(col in base_dados.columns for col in ['UF', 'Nfe', 'Pedido']):
-            print("Erro: Colunas 'UF', 'Nfe' ou 'Pedido' não encontradas na base de dados.")
+        filtro_uf = base_dados['UF'].astype(str).str.strip().str.upper() == str(uf).strip().upper()
+        filtro_nfe = base_dados['Nfe'].astype(str).str.strip() == str(nfe).strip()
+        filtro_pedido = base_dados['Pedido'].astype(str).str.strip() == str(pedido).strip()
+        
+        resultado = base_dados[filtro_uf & filtro_nfe & filtro_pedido]
+        
+        if not resultado.empty:
+            print("✅ Correspondência encontrada:")
+            print(resultado)
+            return True
+        else:
+            print("❌ Nenhuma correspondência encontrada")
+            print("Valores únicos na base:")
+            print("UF:", base_dados['UF'].unique())
+            print("Nfe:", base_dados['Nfe'].unique()[:10], "...")
+            print("Pedido:", base_dados['Pedido'].unique()[:10], "...")
             return False
-
-        # Filtra o DataFrame para encontrar a combinação
-        # Converte colunas da base para tipos compatíveis se necessário (ex: Nfe/Pedido podem ser lidos como float)
-        filtro = (
-            base_dados['UF'].astype(str).str.upper() == str(uf).upper() &
-            base_dados['Nfe'].astype(int) == int(nfe) &
-            base_dados['Pedido'].astype(int) == int(pedido)
-        )
-        return filtro.any()
+            
     except Exception as e:
-        print(f"Erro ao validar nota fiscal na base: {e}")
+        print(f"🔥 Erro durante a validação: {str(e)}")
         return False
 
 def obter_data_planejamento(uf: str, nfe: int, pedido: int, base_dados: pd.DataFrame) -> str:
