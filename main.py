@@ -60,14 +60,14 @@ def verificar():
         uf = request.form.get('uf', '').strip().upper()
         nfe = request.form.get('nfe', '').strip()
         pedido = request.form.get('pedido', '').strip()
-        data_recebimento_str = request.form.get('data_recebimento', '').strip()
+        #data_recebimento_str = request.form.get('data_recebimento', '').strip()
         # Converter para datetime SEM timezone primeiro
-        data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
+        #data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
         
         # Processar a validação (enviar como string formatada)
         resultado = processar_validacao(
             uf, nfe, pedido, 
-            data_naive.strftime('%Y-%m-%d'),  # Envia como UTC
+            #data_naive.strftime('%Y-%m-%d'),  # Envia como UTC
             app.config['BASE_NOTAS']
         )
         
@@ -77,7 +77,7 @@ def verificar():
             resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             # Remova a data de recebimento do resultado que será enviado ao frontend
-            resultado.pop('data_recebimento', None)
+            #resultado.pop('data_recebimento', None)
             
             # Salvar o registro no arquivo CSV
             salvar_registro(resultado, app.config['REGISTROS_CSV'])

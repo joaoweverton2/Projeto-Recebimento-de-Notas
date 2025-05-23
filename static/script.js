@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('result-uf').textContent = data.uf;
                 document.getElementById('result-nfe').textContent = data.nfe;
                 document.getElementById('result-pedido').textContent = data.pedido;
-                document.getElementById('result-data').textContent = formatarData(data.data_recebimento);
+                // document.getElementById('result-data').textContent = formatarData(data.data_recebimento);
                 document.getElementById('result-planejamento').textContent = data.data_planejamento;
                 
                 const decisaoElement = document.getElementById('result-decisao');
