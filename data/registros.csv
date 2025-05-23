@@ -1,14 +1,1 @@
 uf,nfe,pedido,data_recebimento,valido,data_planejamento,decisao,mensagem,timestamp
-RN,187895,77480,2024-12-01,True,2025/janeiro,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-22 09:46:55
-RN,187895,77480,2025-01-02,True,2025/janeiro,Pode abrir JIRA,Validação concluída com sucesso,2025-05-22 09:47:15
-RN,2651,78349,2025-02-01,True,2025/março,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-22 10:17:43
-RN,2651,78349,2025-03-01,True,2025/março,Pode abrir JIRA,Validação concluída com sucesso,2025-05-22 10:17:48
-MG,6642,76521,2025-05-20,True,2025/junho,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-22 10:56:11
-MG,6642,76521,2025-05-20,True,2025/junho,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-22 10:56:18
-MG,6642,76521,2025-05-18,True,2025/junho,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-22 10:56:48
-RN,187895,99889,2025-04-01,True,2025/abril,Pode abrir JIRA,Validação concluída com sucesso,2025-05-22 10:59:00
-RN,187895,99889,2025-04-01,True,2025/abril,Pode abrir JIRA,Validação concluída com sucesso,2025-05-22 11:01:00
-RN,187895,99889,2025-02-01,True,2025/abril,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-22 11:01:10
-RN,15733,75710,2025-04-01,True,2025/maio,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-22 11:27:20
-RN,15733,75710,2025-04-01,True,2025/maio,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-22 11:28:27
-RN,15733,75710,2025-05-01,True,2025/maio,Pode abrir JIRA,Validação concluída com sucesso,2025-05-22 11:28:56

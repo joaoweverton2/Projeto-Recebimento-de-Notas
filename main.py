@@ -37,9 +37,13 @@ app.config['DATABASE_FOLDER'].mkdir(exist_ok=True)
 
 # VERIFICAÇÃO CRUCIAL DO ARQUIVO (adicionado)
 print("\n" + "="*50)
+print("VERIFICAÇÃO DE CAMINHOS:")
 print(f"📂 Diretório base: {BASE_DIR}")
-print(f"📝 Arquivo de notas: {app.config['BASE_NOTAS']}")
-print(f"🔍 Arquivo existe? {app.config['BASE_NOTAS'].exists()}")
+print(f"📁 Pasta uploads: {app.config['UPLOAD_FOLDER']} - Existe? {app.config['UPLOAD_FOLDER'].exists()}")
+print(f"📁 Pasta data: {app.config['DATABASE_FOLDER']} - Existe? {app.config['DATABASE_FOLDER'].exists()}")
+print(f"📝 Arquivo de notas: {app.config['BASE_NOTAS']} - Existe? {app.config['BASE_NOTAS'].exists()}")
+print(f"📝 Arquivo registros CSV: {app.config['REGISTROS_CSV']}")
+print(f"📝 Arquivo registros Excel: {app.config['REGISTROS_EXCEL']}")
 print("="*50 + "\n")
 
 # Rotas existentes (mantenha todas as suas rotas como estão)
@@ -50,32 +54,20 @@ def index():
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
-    """
-    Processa a requisição de verificação de nota fiscal.
-    
-    Recebe os dados do formulário, valida contra a base de dados,
-    determina se um JIRA deve ser aberto e salva o registro.
-    
-    Returns:
-        JSON com o resultado da verificação.
-    """
     try:
         # Obter dados do formulário
         uf = request.form.get('uf', '').strip().upper()
         nfe = request.form.get('nfe', '').strip()
         pedido = request.form.get('pedido', '').strip()
         data_recebimento_str = request.form.get('data_recebimento', '').strip()
-        # Converter para datetime SEM timezone primeiro
-        data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
-        # Adicionar timezone (Brasília)
-        data_com_timezone = app.config['TIMEZONE'].localize(data_naive)
-        # Converter para UTC para armazenamento
-        data_utc = data_com_timezone.astimezone(pytz.UTC)
         
-        # Processar a validação (enviar como string formatada)
+        # Manter a data original para retorno (sem conversão para UTC)
+        data_original = datetime.strptime(data_recebimento_str, '%Y-%m-%d').date()
+        
+        # Processar a validação (enviar a data original formatada)
         resultado = processar_validacao(
             uf, nfe, pedido, 
-            data_utc.strftime('%Y-%m-%d'),  # Envia como UTC
+            data_original.strftime('%Y-%m-%d'),  # Envia como string no formato YYYY-MM-DD
             app.config['BASE_NOTAS']
         )
         
