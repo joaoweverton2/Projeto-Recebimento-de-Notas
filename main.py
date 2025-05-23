@@ -54,7 +54,19 @@ def index():
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
+    if not request.is_json:
+        return jsonify({
+            'valido': False,
+            'mensagem': 'Content-Type deve ser application/json'
+        }), 415
+    
     try:
+        dados = request.get_json()
+        if not dados:
+            return jsonify({
+                'valido': False,
+                'mensagem': 'Nenhum dado JSON recebido'
+            }), 400
         # Obter dados como JSON
         dados = request.get_json()
         

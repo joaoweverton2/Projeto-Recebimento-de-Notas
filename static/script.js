@@ -120,12 +120,13 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Enviar requisição para o backend como JSON
         fetch('/verificar', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(formData)
-        })
+    	    method: 'POST',
+    	    headers: {
+        	'Content-Type': 'application/json',
+        	'Accept': 'application/json'
+    	    },
+    	    body: JSON.stringify(formData)
+	})
         .then(response => {
             if (!response.ok) {
                 throw new Error('Erro na resposta do servidor');
