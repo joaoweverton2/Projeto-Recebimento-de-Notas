@@ -164,7 +164,7 @@ def atualizar_base():
             })
         
         # Salvar o arquivo
-        filename = secure_filename('Base de notas.xlsx')
+        filename = secure_filename('Base\ de\ notas.xlsx')
         arquivo.save(app.config['BASE_NOTAS'])
         
         return jsonify({
