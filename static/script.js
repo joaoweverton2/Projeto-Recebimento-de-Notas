@@ -53,15 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
             dataError.textContent = 'Informe a data de recebimento';
             isValid = false;
         } else {
-            // Validação adicional para garantir que a data não está no futuro
-            const selectedDate = new Date(dataRecebimento);
-            const currentDate = new Date();
-            if (selectedDate > currentDate) {
-                dataError.textContent = 'A data não pode ser futura';
-                isValid = false;
-            } else {
-                dataError.textContent = '';
-            }
+            dataError.textContent = '';
         }
         
         return isValid;
@@ -73,25 +65,6 @@ document.addEventListener('DOMContentLoaded', function() {
             input.value = '';
         }
     };
-    
-    // Função para converter YYYY-MM-DD (input date) para DD/MM/YYYY (backend)
-    function converterDataParaBackend(dataISO) {
-        if (!dataISO) return '';
-        const [ano, mes, dia] = dataISO.split('-');
-        return `${dia}/${mes}/${ano}`;
-    }
-    
-    // Função para formatar data para exibição
-    function formatarDataParaExibicao(dataString) {
-        if (!dataString) return '';
-        // Se já estiver no formato DD/MM/YYYY, retorna sem alteração
-        if (dataString.includes('/')) {
-            return dataString;
-        }
-        // Se estiver no formato YYYY-MM-DD, converte
-        const [ano, mes, dia] = dataString.split('-');
-        return `${dia}/${mes}/${ano}`;
-    }
     
     // Envio do formulário
     nfeForm.addEventListener('submit', function(e) {
@@ -110,29 +83,15 @@ document.addEventListener('DOMContentLoaded', function() {
         // Rolar para a seção de resultado
         resultSection.scrollIntoView({ behavior: 'smooth' });
         
-        // Obter e preparar os dados do formulário
-        const formData = {
-            uf: document.getElementById('uf').value.trim().toUpperCase(),
-            nfe: document.getElementById('nfe').value.trim(),
-            pedido: document.getElementById('pedido').value.trim(),
-            data_recebimento: converterDataParaBackend(document.getElementById('data_recebimento').value)
-        };
+        // Obter dados do formulário
+        const formData = new FormData(nfeForm);
         
-        // Enviar requisição para o backend como JSON
+        // Enviar requisição para o backend
         fetch('/verificar', {
-    	    method: 'POST',
-    	    headers: {
-        	'Content-Type': 'application/json',
-        	'Accept': 'application/json'
-    	    },
-    	    body: JSON.stringify(formData)
-	})
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Erro na resposta do servidor');
-            }
-            return response.json();
+            method: 'POST',
+            body: formData
         })
+        .then(response => response.json())
         .then(data => {
             // Ocultar indicador de carregamento
             loadingIndicator.style.display = 'none';
@@ -145,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('result-uf').textContent = data.uf;
                 document.getElementById('result-nfe').textContent = data.nfe;
                 document.getElementById('result-pedido').textContent = data.pedido;
-                document.getElementById('result-data').textContent = formatarDataParaExibicao(data.data_recebimento);
+                // document.getElementById('result-data').textContent = formatarData(data.data_recebimento);
                 document.getElementById('result-planejamento').textContent = data.data_planejamento;
                 
                 const decisaoElement = document.getElementById('result-decisao');
@@ -159,4 +118,44 @@ document.addEventListener('DOMContentLoaded', function() {
                     resultIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
                     resultTitle.textContent = 'Verificação Concluída - Pode Abrir JIRA';
                     decisaoElement.className = 'decision success';
-                } else
+                } else {
+                    resultIcon.innerHTML = '<i class="fas fa-clock"></i>';
+                    resultTitle.textContent = 'Verificação Concluída - Aguardar';
+                    decisaoElement.className = 'decision warning';
+                }
+            } else {
+                // Mostrar conteúdo de erro
+                errorContent.style.display = 'block';
+                document.getElementById('errorMessage').textContent = data.mensagem;
+            }
+        })
+        .catch(error => {
+            // Ocultar indicador de carregamento e mostrar erro
+            loadingIndicator.style.display = 'none';
+            errorContent.style.display = 'block';
+            document.getElementById('errorMessage').textContent = 'Erro ao processar a requisição. Por favor, tente novamente.';
+            console.error('Erro:', error);
+        });
+    });
+    
+    // Botão para nova verificação
+    newVerificationBtn.addEventListener('click', function() {
+        nfeForm.reset();
+        resultSection.style.display = 'none';
+        document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
+    });
+    
+    // Botão para tentar novamente
+    tryAgainBtn.addEventListener('click', function() {
+        resultSection.style.display = 'none';
+        document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
+    });
+    
+    // Função para formatar data
+    function formatarData(dataString) {
+        if (!dataString) return '';
+        
+        const data = new Date(dataString);
+        return data.toLocaleDateString('pt-BR');
+    }
+});

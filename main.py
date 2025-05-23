@@ -11,10 +11,6 @@ from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from pathlib import Path
 
-# Configurar o timezone padrão para todas as operações
-import time
-time.tzset = lambda: None  # Desativa a mudança de timezone global (para evitar efeitos colaterais)
-
 # Configurações da aplicação
 app = Flask(__name__)
 
@@ -54,62 +50,48 @@ def index():
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
-    if not request.is_json:
-        return jsonify({
-            'valido': False,
-            'mensagem': 'Content-Type deve ser application/json'
-        }), 415
+    """
+    Processa a requisição de verificação de nota fiscal.
     
+    Recebe os dados do formulário, valida contra a base de dados,
+    determina se um JIRA deve ser aberto e salva o registro.
+    
+    Returns:
+        JSON com o resultado da verificação.
+    """
     try:
-        dados = request.get_json()
-        if not dados:
-            return jsonify({
-                'valido': False,
-                'mensagem': 'Nenhum dado JSON recebido'
-            }), 400
-        # Obter dados como JSON
-        dados = request.get_json()
+        # Obter dados do formulário
+        uf = request.form.get('uf', '').strip().upper()
+        nfe = request.form.get('nfe', '').strip()
+        pedido = request.form.get('pedido', '').strip()
+        data_recebimento_str = request.form.get('data_recebimento', '').strip()
+        # Converter para datetime SEM timezone primeiro
+        data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
+        # Adicionar timezone (Brasília)
+        data_com_timezone = app.config['TIMEZONE'].localize(data_naive)
+        # Converter para UTC para armazenamento
+        data_utc = data_com_timezone.astimezone(pytz.UTC)
         
-        uf = dados.get('uf', '').strip().upper()
-        nfe = dados.get('nfe', '').strip()
-        pedido = dados.get('pedido', '').strip()
-        data_recebimento_str = dados.get('data_recebimento', '').strip()
-        
-        # Processar a validação (agora recebendo DD/MM/YYYY)
+        # Processar a validação (enviar como string formatada)
         resultado = processar_validacao(
             uf, nfe, pedido, 
-            data_recebimento_str,  # Já está no formato DD/MM/YYYY
+            data_utc.strftime('%Y-%m-%d'),  # Envia como UTC
             app.config['BASE_NOTAS']
         )
         
-        # Converter a data de DD/MM/YYYY para objeto datetime
-        try:
-            # Primeiro tenta interpretar como DD/MM/YYYY
-            dia, mes, ano = map(int, data_recebimento_str.split('/'))
-            if mes > 12 or dia > 31:  # Validação básica
-                raise ValueError
-            data_naive = datetime(ano, mes, dia)
-        except (ValueError, AttributeError):
-            return jsonify({
-                'valido': False,
-                'mensagem': 'Formato de data inválido. Use DD/MM/AAAA com valores válidos'
-            })
-        
-        # Aplicar timezone de Brasília
-        tz = pytz.timezone('America/Sao_Paulo')
-        data_brasilia = tz.localize(data_naive)
-        
-        # Processar a validação (enviar como string no formato YYYY-MM-DD)
-        resultado = processar_validacao(
-            uf, nfe, pedido, 
-            data_brasilia.strftime('%Y-%m-%d'),
-            app.config['BASE_NOTAS']
-        )
-        
-        # Formatando a data de volta para DD/MM/YYYY no resultado
-        if 'data_recebimento' in resultado:
-            data_obj = datetime.strptime(resultado['data_recebimento'], '%Y-%m-%d')
-            resultado['data_recebimento'] = data_obj.strftime('%d/%m/%Y')
+        # Se a validação for bem-sucedida, salvar o registro
+        if resultado['valido']:
+            # Adicionar timestamp ao registro
+            resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Salvar o registro no arquivo CSV
+            salvar_registro(resultado, app.config['REGISTROS_CSV'])
+            
+            # Exportar para Excel se o arquivo CSV existir
+            if os.path.exists(app.config['REGISTROS_CSV']):
+                exportar_registros_para_excel(
+                    app.config['REGISTROS_CSV'], app.config['REGISTROS_EXCEL']
+                )
         
         return jsonify(resultado)
     
