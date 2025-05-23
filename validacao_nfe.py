@@ -68,28 +68,26 @@ def extrair_mes_ano_planejamento(data_planejamento: str) -> Tuple[int, int]:
 
 def extrair_mes_ano_recebimento(data_recebimento: str) -> Tuple[int, int]:
     """
-    Extrai o mês e o ano da data de recebimento.
-    
-    Args:
-        data_recebimento: String representando a data de recebimento.
-        
-    Returns:
-        Tupla contendo (ano, mês) como inteiros.
+    Extrai o mês e o ano da data de recebimento, suportando:
+    - Formato interno YYYY-MM-DD
+    - Formato original DD/MM/YYYY (como medida de segurança)
     """
     try:
-        # Tenta diferentes formatos de data
-        for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
-            try:
-                data = datetime.strptime(data_recebimento, fmt)
-                return data.year, data.month
-            except ValueError:
-                continue
+        # Tenta primeiro o formato YYYY-MM-DD (padrão interno)
+        if '-' in data_recebimento:
+            ano, mes, _ = map(int, data_recebimento.split('-'))
+            return ano, mes
         
-        # Se nenhum formato funcionar, levanta exceção
-        raise ValueError(f"Formato de data não reconhecido: {data_recebimento}")
+        # Se não, tenta DD/MM/YYYY (como fallback)
+        elif '/' in data_recebimento:
+            _, mes, ano = map(int, data_recebimento.split('/'))
+            return ano, mes
+        
+        raise ValueError("Formato de data não reconhecido")
+    
     except Exception as e:
-        print(f"Erro ao extrair mês e ano de '{data_recebimento}': {e}")
-        return 0, 0
+        print(f"Erro ao extrair mês/ano: {e}")
+        return 0, 0  # Retorno seguro para evitar quebras
 
 def validar_nota_fiscal(uf: str, nfe: int, pedido: int, base_dados: pd.DataFrame) -> bool:
     """

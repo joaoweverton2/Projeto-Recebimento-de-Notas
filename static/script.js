@@ -53,7 +53,15 @@ document.addEventListener('DOMContentLoaded', function() {
             dataError.textContent = 'Informe a data de recebimento';
             isValid = false;
         } else {
-            dataError.textContent = '';
+            // Validação adicional para garantir que a data não está no futuro
+            const selectedDate = new Date(dataRecebimento);
+            const currentDate = new Date();
+            if (selectedDate > currentDate) {
+                dataError.textContent = 'A data não pode ser futura';
+                isValid = false;
+            } else {
+                dataError.textContent = '';
+            }
         }
         
         return isValid;
@@ -104,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('result-uf').textContent = data.uf;
                 document.getElementById('result-nfe').textContent = data.nfe;
                 document.getElementById('result-pedido').textContent = data.pedido;
-                document.getElementById('result-data').textContent = formatarData(data.data_recebimento);
+                document.getElementById('result-data').textContent = formatarDataParaExibicao(data.data_recebimento);
                 document.getElementById('result-planejamento').textContent = data.data_planejamento;
                 
                 const decisaoElement = document.getElementById('result-decisao');
@@ -151,11 +159,29 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
     });
     
-    // Função para formatar data
-    function formatarData(dataString) {
+    // Função para formatar data para exibição (DD/MM/AAAA)
+    function formatarDataParaExibicao(dataString) {
         if (!dataString) return '';
         
-        const data = new Date(dataString);
-        return data.toLocaleDateString('pt-BR');
+        // Verifica se a data já está no formato DD/MM/AAAA (retorno do backend)
+        if (dataString.includes('/')) {
+            return dataString;
+        }
+        
+        // Se estiver no formato YYYY-MM-DD (input type="date")
+        const [ano, mes, dia] = dataString.split('-');
+        return `${dia}/${mes}/${ano}`;
+    }
+    
+    // Função auxiliar para converter DD/MM/AAAA para YYYY-MM-DD (se necessário)
+    function converterParaFormatoISO(dataString) {
+        if (!dataString) return '';
+        
+        if (dataString.includes('/')) {
+            const [dia, mes, ano] = dataString.split('/');
+            return `${ano}-${mes}-${dia}`;
+        }
+        
+        return dataString;
     }
 });

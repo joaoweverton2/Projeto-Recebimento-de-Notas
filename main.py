@@ -61,37 +61,34 @@ def verificar():
         pedido = request.form.get('pedido', '').strip()
         data_recebimento_str = request.form.get('data_recebimento', '').strip()
         
-        # Converter para datetime com timezone de Brasília
+        # Converter a data de DD/MM/YYYY para objeto datetime
+        try:
+            # Primeiro tenta interpretar como DD/MM/YYYY
+            dia, mes, ano = map(int, data_recebimento_str.split('/'))
+            if mes > 12 or dia > 31:  # Validação básica
+                raise ValueError
+            data_naive = datetime(ano, mes, dia)
+        except (ValueError, AttributeError):
+            return jsonify({
+                'valido': False,
+                'mensagem': 'Formato de data inválido. Use DD/MM/AAAA com valores válidos'
+            })
+        
+        # Aplicar timezone de Brasília
         tz = pytz.timezone('America/Sao_Paulo')
-        data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
         data_brasilia = tz.localize(data_naive)
         
-        # Processar a validação (enviar a data já no timezone correto como string)
+        # Processar a validação (enviar como string no formato YYYY-MM-DD)
         resultado = processar_validacao(
             uf, nfe, pedido, 
-            data_brasilia.strftime('%Y-%m-%d'),  # Envia como string no formato YYYY-MM-DD
+            data_brasilia.strftime('%Y-%m-%d'),
             app.config['BASE_NOTAS']
         )
         
-        # Garantir que a data no resultado esteja no formato correto
+        # Formatando a data de volta para DD/MM/YYYY no resultado
         if 'data_recebimento' in resultado:
-            # Se precisar formatar de volta para DD/MM/YYYY
             data_obj = datetime.strptime(resultado['data_recebimento'], '%Y-%m-%d')
             resultado['data_recebimento'] = data_obj.strftime('%d/%m/%Y')
-        
-        # Se a validação for bem-sucedida, salvar o registro
-        if resultado['valido']:
-            # Adicionar timestamp ao registro
-            resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
-            # Salvar o registro no arquivo CSV
-            salvar_registro(resultado, app.config['REGISTROS_CSV'])
-            
-            # Exportar para Excel se o arquivo CSV existir
-            if os.path.exists(app.config['REGISTROS_CSV']):
-                exportar_registros_para_excel(
-                    app.config['REGISTROS_CSV'], app.config['REGISTROS_EXCEL']
-                )
         
         return jsonify(resultado)
     
