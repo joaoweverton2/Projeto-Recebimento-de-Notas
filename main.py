@@ -1,8 +1,5 @@
 """
 Aplicação principal para o Sistema de Verificação de Notas Fiscais
-
-Este módulo contém a aplicação Flask que serve a interface web e processa
-as requisições de verificação de notas fiscais.
 """
 
 import os
@@ -11,37 +8,37 @@ import pandas as pd
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
-
 from pathlib import Path
-# Adiciona o diretório atual ao PATH do Python
-sys.path.append(str(Path(__file__).parent))
 
-# Adicionar o diretório do projeto ao path para importar o módulo de validação
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# Configurações de caminhos ABSOLUTAMENTE CONFIAVEIS
+BASE_DIR = Path(__file__).parent.absolute()
+sys.path.insert(0, str(BASE_DIR))
+
+# Importação do módulo de validação
 from validacao_nfe import processar_validacao, salvar_registro, exportar_registros_para_excel
 
 # Configurações da aplicação
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
-app.config['DATABASE_FOLDER'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-app.config['BASE_NOTAS'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'Base_de_notas.xlsx')
-app.config['REGISTROS_CSV'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'registros.csv')
-app.config['REGISTROS_EXCEL'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'registros.xlsx')
 
-# Garantir que os diretórios necessários existam
-for folder in [app.config['UPLOAD_FOLDER'], app.config['DATABASE_FOLDER']]:
-    os.makedirs(folder, exist_ok=True)
-    
-# Novo caminho da pasta Data
-caminho_data = r"C:\Users\joao.miranda\OneDrive - VIDEOMAR REDE NORDESTE S A\Área de Trabalho\Projeto-Recebimento-de-Notas\data"    
+# Configuração de caminhos usando pathlib (garante funcionamento em qualquer SO)
+app.config['UPLOAD_FOLDER'] = BASE_DIR / 'uploads'
+app.config['DATABASE_FOLDER'] = BASE_DIR / 'data'
+app.config['BASE_NOTAS'] = BASE_DIR / 'data' / 'Base_de_notas.xlsx'
+app.config['REGISTROS_CSV'] = BASE_DIR / 'data' / 'registros.csv'
+app.config['REGISTROS_EXCEL'] = BASE_DIR / 'data' / 'registros.xlsx'
 
-# Copiar a base de notas para o diretório de dados se não existir
-if not os.path.exists(app.config['BASE_NOTAS']):
-    original_base = f"{caminho_data}\\Base_de_notas.xlsx"
-    if os.path.exists(original_base):
-        import shutil
-        shutil.copy(original_base, app.config['BASE_NOTAS'])
+# Garantir que os diretórios existam (cria se não existirem)
+app.config['UPLOAD_FOLDER'].mkdir(exist_ok=True)
+app.config['DATABASE_FOLDER'].mkdir(exist_ok=True)
 
+# VERIFICAÇÃO CRUCIAL DO ARQUIVO (adicionado)
+print("\n" + "="*50)
+print(f"📂 Diretório base: {BASE_DIR}")
+print(f"📝 Arquivo de notas: {app.config['BASE_NOTAS']}")
+print(f"🔍 Arquivo existe? {app.config['BASE_NOTAS'].exists()}")
+print("="*50 + "\n")
+
+# Rotas existentes (mantenha todas as suas rotas como estão)
 @app.route('/')
 def index():
     """Rota principal que renderiza a página inicial."""
@@ -185,5 +182,9 @@ def admin():
     return render_template('admin.html')
 
 if __name__ == '__main__':
-    # Executar a aplicação
+    # DEBUG EXTRA - Mostra estrutura de arquivos
+    print("\nESTRUTURA DE ARQUIVOS:")
+    for root, dirs, files in os.walk(BASE_DIR):
+        print(f"{root}: {files}")
+    
     app.run(host='0.0.0.0', port=5000, debug=True)
