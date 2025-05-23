@@ -55,11 +55,20 @@ def index():
 @app.route('/verificar', methods=['POST'])
 def verificar():
     try:
-        # Obter dados do formulário
-        uf = request.form.get('uf', '').strip().upper()
-        nfe = request.form.get('nfe', '').strip()
-        pedido = request.form.get('pedido', '').strip()
-        data_recebimento_str = request.form.get('data_recebimento', '').strip()
+        # Obter dados como JSON
+        dados = request.get_json()
+        
+        uf = dados.get('uf', '').strip().upper()
+        nfe = dados.get('nfe', '').strip()
+        pedido = dados.get('pedido', '').strip()
+        data_recebimento_str = dados.get('data_recebimento', '').strip()
+        
+        # Processar a validação (agora recebendo DD/MM/YYYY)
+        resultado = processar_validacao(
+            uf, nfe, pedido, 
+            data_recebimento_str,  # Já está no formato DD/MM/YYYY
+            app.config['BASE_NOTAS']
+        )
         
         # Converter a data de DD/MM/YYYY para objeto datetime
         try:

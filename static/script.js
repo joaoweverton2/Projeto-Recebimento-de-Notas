@@ -74,6 +74,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
+    // Função para converter YYYY-MM-DD (input date) para DD/MM/YYYY (backend)
+    function converterDataParaBackend(dataISO) {
+        if (!dataISO) return '';
+        const [ano, mes, dia] = dataISO.split('-');
+        return `${dia}/${mes}/${ano}`;
+    }
+    
+    // Função para formatar data para exibição
+    function formatarDataParaExibicao(dataString) {
+        if (!dataString) return '';
+        // Se já estiver no formato DD/MM/YYYY, retorna sem alteração
+        if (dataString.includes('/')) {
+            return dataString;
+        }
+        // Se estiver no formato YYYY-MM-DD, converte
+        const [ano, mes, dia] = dataString.split('-');
+        return `${dia}/${mes}/${ano}`;
+    }
+    
     // Envio do formulário
     nfeForm.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -91,15 +110,28 @@ document.addEventListener('DOMContentLoaded', function() {
         // Rolar para a seção de resultado
         resultSection.scrollIntoView({ behavior: 'smooth' });
         
-        // Obter dados do formulário
-        const formData = new FormData(nfeForm);
+        // Obter e preparar os dados do formulário
+        const formData = {
+            uf: document.getElementById('uf').value.trim().toUpperCase(),
+            nfe: document.getElementById('nfe').value.trim(),
+            pedido: document.getElementById('pedido').value.trim(),
+            data_recebimento: converterDataParaBackend(document.getElementById('data_recebimento').value)
+        };
         
-        // Enviar requisição para o backend
+        // Enviar requisição para o backend como JSON
         fetch('/verificar', {
             method: 'POST',
-            body: formData
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Erro na resposta do servidor');
+            }
+            return response.json();
+        })
         .then(data => {
             // Ocultar indicador de carregamento
             loadingIndicator.style.display = 'none';
@@ -126,62 +158,4 @@ document.addEventListener('DOMContentLoaded', function() {
                     resultIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
                     resultTitle.textContent = 'Verificação Concluída - Pode Abrir JIRA';
                     decisaoElement.className = 'decision success';
-                } else {
-                    resultIcon.innerHTML = '<i class="fas fa-clock"></i>';
-                    resultTitle.textContent = 'Verificação Concluída - Aguardar';
-                    decisaoElement.className = 'decision warning';
-                }
-            } else {
-                // Mostrar conteúdo de erro
-                errorContent.style.display = 'block';
-                document.getElementById('errorMessage').textContent = data.mensagem;
-            }
-        })
-        .catch(error => {
-            // Ocultar indicador de carregamento e mostrar erro
-            loadingIndicator.style.display = 'none';
-            errorContent.style.display = 'block';
-            document.getElementById('errorMessage').textContent = 'Erro ao processar a requisição. Por favor, tente novamente.';
-            console.error('Erro:', error);
-        });
-    });
-    
-    // Botão para nova verificação
-    newVerificationBtn.addEventListener('click', function() {
-        nfeForm.reset();
-        resultSection.style.display = 'none';
-        document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
-    });
-    
-    // Botão para tentar novamente
-    tryAgainBtn.addEventListener('click', function() {
-        resultSection.style.display = 'none';
-        document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
-    });
-    
-    // Função para formatar data para exibição (DD/MM/AAAA)
-    function formatarDataParaExibicao(dataString) {
-        if (!dataString) return '';
-        
-        // Verifica se a data já está no formato DD/MM/AAAA (retorno do backend)
-        if (dataString.includes('/')) {
-            return dataString;
-        }
-        
-        // Se estiver no formato YYYY-MM-DD (input type="date")
-        const [ano, mes, dia] = dataString.split('-');
-        return `${dia}/${mes}/${ano}`;
-    }
-    
-    // Função auxiliar para converter DD/MM/AAAA para YYYY-MM-DD (se necessário)
-    function converterParaFormatoISO(dataString) {
-        if (!dataString) return '';
-        
-        if (dataString.includes('/')) {
-            const [dia, mes, ano] = dataString.split('/');
-            return `${ano}-${mes}-${dia}`;
-        }
-        
-        return dataString;
-    }
-});
+                } else
