@@ -65,19 +65,18 @@ def verificar():
         nfe = request.form.get('nfe', '').strip()
         pedido = request.form.get('pedido', '').strip()
         data_recebimento_str = request.form.get('data_recebimento', '').strip()
-        data_recebimento = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
-        data_recebimento = app.config['TIMEZONE'].localize(data_recebimento)
+        # Converter para datetime SEM timezone primeiro
+        data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
+        # Adicionar timezone (Brasília)
+        data_com_timezone = app.config['TIMEZONE'].localize(data_naive)
+        # Converter para UTC para armazenamento
+        data_utc = data_com_timezone.astimezone(pytz.UTC)
         
-        # Validar dados de entrada
-        if not all([uf, nfe, pedido, data_recebimento]):
-            return jsonify({
-                'valido': False,
-                'mensagem': 'Todos os campos são obrigatórios'
-            })
-        
-        # Processar a validação
+        # Processar a validação (enviar como string formatada)
         resultado = processar_validacao(
-            uf, nfe, pedido, data_recebimento, app.config['BASE_NOTAS']
+            uf, nfe, pedido, 
+            data_utc.strftime('%Y-%m-%d'),  # Envia como UTC
+            app.config['BASE_NOTAS']
         )
         
         # Se a validação for bem-sucedida, salvar o registro
