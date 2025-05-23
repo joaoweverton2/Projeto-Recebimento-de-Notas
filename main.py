@@ -6,16 +6,12 @@ import os
 import sys
 import pandas as pd
 from datetime import datetime, timedelta
-import pytz
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from pathlib import Path
 
 # Configurações da aplicação
 app = Flask(__name__)
-
-# Configurar timezone padrão
-app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
 
 # Configurações de caminhos ABSOLUTAMENTE CONFIAVEIS
 BASE_DIR = Path(__file__).parent.absolute()
@@ -67,15 +63,11 @@ def verificar():
         data_recebimento_str = request.form.get('data_recebimento', '').strip()
         # Converter para datetime SEM timezone primeiro
         data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
-        # Adicionar timezone (Brasília)
-        data_com_timezone = app.config['TIMEZONE'].localize(data_naive)
-        # Converter para UTC para armazenamento
-        data_utc = data_com_timezone.astimezone(pytz.UTC)
         
         # Processar a validação (enviar como string formatada)
         resultado = processar_validacao(
             uf, nfe, pedido, 
-            data_utc.strftime('%Y-%m-%d'),  # Envia como UTC
+            data_naive.strftime('%Y-%m-%d'),  # Envia como UTC
             app.config['BASE_NOTAS']
         )
         
@@ -83,6 +75,9 @@ def verificar():
         if resultado['valido']:
             # Adicionar timestamp ao registro
             resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Remova a data de recebimento do resultado que será enviado ao frontend
+            resultado.pop('data_recebimento', None)
             
             # Salvar o registro no arquivo CSV
             salvar_registro(resultado, app.config['REGISTROS_CSV'])
