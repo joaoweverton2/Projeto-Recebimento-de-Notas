@@ -11,6 +11,10 @@ from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from pathlib import Path
 
+# Configurar o timezone padrão para todas as operações
+import time
+time.tzset = lambda: None  # Desativa a mudança de timezone global (para evitar efeitos colaterais)
+
 # Configurações da aplicação
 app = Flask(__name__)
 
@@ -50,34 +54,30 @@ def index():
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
-    """
-    Processa a requisição de verificação de nota fiscal.
-    
-    Recebe os dados do formulário, valida contra a base de dados,
-    determina se um JIRA deve ser aberto e salva o registro.
-    
-    Returns:
-        JSON com o resultado da verificação.
-    """
     try:
         # Obter dados do formulário
         uf = request.form.get('uf', '').strip().upper()
         nfe = request.form.get('nfe', '').strip()
         pedido = request.form.get('pedido', '').strip()
         data_recebimento_str = request.form.get('data_recebimento', '').strip()
-        # Converter para datetime SEM timezone primeiro
-        data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
-        # Adicionar timezone (Brasília)
-        data_com_timezone = app.config['TIMEZONE'].localize(data_naive)
-        # Converter para UTC para armazenamento
-        data_utc = data_com_timezone.astimezone(pytz.UTC)
         
-        # Processar a validação (enviar como string formatada)
+        # Converter para datetime com timezone de Brasília
+        tz = pytz.timezone('America/Sao_Paulo')
+        data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
+        data_brasilia = tz.localize(data_naive)
+        
+        # Processar a validação (enviar a data já no timezone correto como string)
         resultado = processar_validacao(
             uf, nfe, pedido, 
-            data_utc.strftime('%Y-%m-%d'),  # Envia como UTC
+            data_brasilia.strftime('%Y-%m-%d'),  # Envia como string no formato YYYY-MM-DD
             app.config['BASE_NOTAS']
         )
+        
+        # Garantir que a data no resultado esteja no formato correto
+        if 'data_recebimento' in resultado:
+            # Se precisar formatar de volta para DD/MM/YYYY
+            data_obj = datetime.strptime(resultado['data_recebimento'], '%Y-%m-%d')
+            resultado['data_recebimento'] = data_obj.strftime('%d/%m/%Y')
         
         # Se a validação for bem-sucedida, salvar o registro
         if resultado['valido']:
