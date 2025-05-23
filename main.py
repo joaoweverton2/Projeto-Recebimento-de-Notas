@@ -5,8 +5,8 @@ Aplicação principal para o Sistema de Verificação de Notas Fiscais
 import os
 import sys
 import pandas as pd
-from datetime import datetime, timedelta
-import pytz
+from datetime import datetime
+# import pytz # Comentado pois não será usado para a data de recebimento
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from pathlib import Path
@@ -14,39 +14,40 @@ from pathlib import Path
 # Configurações da aplicação
 app = Flask(__name__)
 
-# Configurar timezone padrão
-app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
+# Configurar timezone padrão (mantido caso seja útil para outras partes, mas não para data_recebimento)
+# app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
 
-# Configurações de caminhos ABSOLUTAMENTE CONFIAVEIS
+# Configurações de caminhos
 BASE_DIR = Path(__file__).parent.absolute()
 sys.path.insert(0, str(BASE_DIR))
 
 # Importação do módulo de validação
 from validacao_nfe import processar_validacao, salvar_registro, exportar_registros_para_excel
 
-# Configuração de caminhos usando pathlib (garante funcionamento em qualquer SO)
+# Configuração de caminho de upload (mantido relativo à aplicação)
 app.config['UPLOAD_FOLDER'] = BASE_DIR / 'uploads'
-app.config['DATABASE_FOLDER'] = BASE_DIR / 'data'
-app.config['BASE_NOTAS'] = BASE_DIR / 'data' / 'Base_de_notas.xlsx'
-app.config['REGISTROS_CSV'] = BASE_DIR / 'data' / 'registros.csv'
-app.config['REGISTROS_EXCEL'] = BASE_DIR / 'data' / 'registros.xlsx'
-
-# Garantir que os diretórios existam (cria se não existirem)
 app.config['UPLOAD_FOLDER'].mkdir(exist_ok=True)
-app.config['DATABASE_FOLDER'].mkdir(exist_ok=True)
 
-# VERIFICAÇÃO CRUCIAL DO ARQUIVO (adicionado)
+# Caminho absoluto fornecido pelo usuário para dados
+# Usando string raw (r"...") para evitar problemas com barras invertidas no Windows
+USER_DATA_PATH = r"C:\Users\joao.miranda\OneDrive - VIDEOMAR REDE NORDESTE S A\Área de Trabalho\Projeto-Recebimento-de-Notas\data"
+
+# Configuração dos caminhos para base e registros usando o caminho do usuário
+app.config['BASE_NOTAS'] = os.path.join(USER_DATA_PATH, 'Base_de_notas.xlsx')
+app.config['REGISTROS_CSV'] = os.path.join(USER_DATA_PATH, 'registros.csv')
+app.config['REGISTROS_EXCEL'] = os.path.join(USER_DATA_PATH, 'registros.xlsx')
+
+# VERIFICAÇÃO DOS CAMINHOS CONFIGURADOS
 print("\n" + "="*50)
-print("VERIFICAÇÃO DE CAMINHOS:")
-print(f"📂 Diretório base: {BASE_DIR}")
-print(f"📁 Pasta uploads: {app.config['UPLOAD_FOLDER']} - Existe? {app.config['UPLOAD_FOLDER'].exists()}")
-print(f"📁 Pasta data: {app.config['DATABASE_FOLDER']} - Existe? {app.config['DATABASE_FOLDER'].exists()}")
-print(f"📝 Arquivo de notas: {app.config['BASE_NOTAS']} - Existe? {app.config['BASE_NOTAS'].exists()}")
-print(f"📝 Arquivo registros CSV: {app.config['REGISTROS_CSV']}")
-print(f"📝 Arquivo registros Excel: {app.config['REGISTROS_EXCEL']}")
+print(f"📂 Diretório base da aplicação: {BASE_DIR}")
+print(f"📦 Diretório de dados configurado: {USER_DATA_PATH}")
+print(f"📝 Arquivo base de notas: {app.config['BASE_NOTAS']}")
+print(f"🔍 Arquivo base existe? {os.path.exists(app.config['BASE_NOTAS'])}")
+print(f"📄 Arquivo CSV de registros: {app.config['REGISTROS_CSV']}")
+print(f"📊 Arquivo Excel de registros: {app.config['REGISTROS_EXCEL']}")
 print("="*50 + "\n")
 
-# Rotas existentes (mantenha todas as suas rotas como estão)
+# Rotas
 @app.route('/')
 def index():
     """Rota principal que renderiza a página inicial."""
@@ -54,134 +55,138 @@ def index():
 
 @app.route('/verificar', methods=['POST'])
 def verificar():
+    """
+    Processa a requisição de verificação de nota fiscal.
+    Recebe os dados do formulário, valida contra a base de dados,
+    determina se um JIRA deve ser aberto e salva o registro.
+    Retorna JSON com o resultado da verificação.
+    """
     try:
         # Obter dados do formulário
         uf = request.form.get('uf', '').strip().upper()
         nfe = request.form.get('nfe', '').strip()
         pedido = request.form.get('pedido', '').strip()
         data_recebimento_str = request.form.get('data_recebimento', '').strip()
-        
-        # Manter a data original para retorno (sem conversão para UTC)
-        data_original = datetime.strptime(data_recebimento_str, '%Y-%m-%d').date()
-        
-        # Processar a validação (enviar a data original formatada)
+
+        # Validar formato da data (AAAA-MM-DD)
+        try:
+            datetime.strptime(data_recebimento_str, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({
+                'valido': False,
+                'mensagem': f'Formato inválido para Data de Recebimento. Use AAAA-MM-DD.'
+            })
+
+        # Processar a validação passando a string da data como recebida
         resultado = processar_validacao(
-            uf, nfe, pedido, 
-            data_original.strftime('%Y-%m-%d'),  # Envia como string no formato YYYY-MM-DD
+            uf, nfe, pedido,
+            data_recebimento_str,  # Passa a string original
             app.config['BASE_NOTAS']
         )
-        
+
         # Se a validação for bem-sucedida, salvar o registro
-        if resultado['valido']:
-            # Adicionar timestamp ao registro
-            resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
-            # Salvar o registro no arquivo CSV
+        if resultado.get('valido'): # Usar .get para segurança
+            # Adicionar timestamp da operação ao registro
+            resultado['timestamp_operacao'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Salvar o registro no arquivo CSV (o dict 'resultado' já contém a data_recebimento original)
             salvar_registro(resultado, app.config['REGISTROS_CSV'])
-            
+
             # Exportar para Excel se o arquivo CSV existir
             if os.path.exists(app.config['REGISTROS_CSV']):
                 exportar_registros_para_excel(
                     app.config['REGISTROS_CSV'], app.config['REGISTROS_EXCEL']
                 )
-        
+
+        # Retornar o resultado completo da validação
+        # O campo 'data_recebimento' no JSON será a string original
         return jsonify(resultado)
-    
+
     except Exception as e:
+        # Log do erro no servidor para depuração
+        print(f"Erro na rota /verificar: {str(e)}") 
         return jsonify({
             'valido': False,
-            'mensagem': f'Erro durante o processamento: {str(e)}'
+            'mensagem': f'Erro interno durante o processamento. Verifique os logs do servidor.'
         })
 
 @app.route('/download/registros', methods=['GET'])
 def download_registros():
     """
     Permite o download do arquivo de registros em formato Excel.
-    
-    Returns:
-        Arquivo Excel para download.
     """
     try:
-        # Verificar se o arquivo existe
-        if not os.path.exists(app.config['REGISTROS_EXCEL']):
+        caminho_arquivo_excel = app.config['REGISTROS_EXCEL']
+        # Verificar se o arquivo existe no caminho configurado
+        if not os.path.exists(caminho_arquivo_excel):
             return jsonify({
                 'sucesso': False,
-                'mensagem': 'Arquivo de registros não encontrado'
-            })
-        
+                'mensagem': f'Arquivo de registros não encontrado em {caminho_arquivo_excel}'
+            }), 404
+
         # Enviar o arquivo para download
         return send_file(
-            app.config['REGISTROS_EXCEL'],
+            caminho_arquivo_excel,
             as_attachment=True,
             download_name='registros_notas_fiscais.xlsx',
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-    
+
     except Exception as e:
+        print(f"Erro na rota /download/registros: {str(e)}")
         return jsonify({
             'sucesso': False,
             'mensagem': f'Erro ao baixar o arquivo: {str(e)}'
-        })
+        }), 500
 
 @app.route('/atualizar-base', methods=['POST'])
 def atualizar_base():
     """
-    Atualiza a base de dados de notas fiscais.
-    
-    Recebe um arquivo Excel enviado pelo usuário e o salva como a nova base de dados.
-    
-    Returns:
-        JSON com o resultado da atualização.
+    Atualiza a base de dados de notas fiscais (Base_de_notas.xlsx) no caminho configurado.
     """
     try:
-        # Verificar se o arquivo foi enviado
         if 'arquivo' not in request.files:
-            return jsonify({
-                'sucesso': False,
-                'mensagem': 'Nenhum arquivo enviado'
-            })
-        
-        arquivo = request.files['arquivo']
-        
-        # Verificar se o arquivo tem nome
-        if arquivo.filename == '':
-            return jsonify({
-                'sucesso': False,
-                'mensagem': 'Nenhum arquivo selecionado'
-            })
-        
-        # Verificar se é um arquivo Excel
-        if not arquivo.filename.endswith(('.xlsx', '.xls')):
-            return jsonify({
-                'sucesso': False,
-                'mensagem': 'O arquivo deve ser um Excel (.xlsx ou .xls)'
-            })
-        
-        # Salvar o arquivo
-        filename = secure_filename('Base_de_notas.xlsx')
-        arquivo.save(app.config['BASE_NOTAS'])
-        
-        return jsonify({
-            'sucesso': True,
-            'mensagem': 'Base de dados atualizada com sucesso'
-        })
-    
-    except Exception as e:
-        return jsonify({
-            'sucesso': False,
-            'mensagem': f'Erro ao atualizar a base de dados: {str(e)}'
-        })
+            return jsonify({'sucesso': False, 'mensagem': 'Nenhum arquivo enviado'}), 400
 
-# Adicionar rota para página de administração
+        arquivo = request.files['arquivo']
+        if arquivo.filename == '':
+            return jsonify({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado'}), 400
+
+        if not arquivo.filename.endswith(('.xlsx', '.xls')):
+            return jsonify({'sucesso': False, 'mensagem': 'O arquivo deve ser um Excel (.xlsx ou .xls)'}), 400
+
+        # Salvar o arquivo no caminho configurado, sobrescrevendo o existente
+        caminho_destino = app.config['BASE_NOTAS']
+        try:
+            arquivo.save(caminho_destino)
+            print(f"Base de dados atualizada com sucesso em: {caminho_destino}")
+            return jsonify({'sucesso': True, 'mensagem': 'Base de dados atualizada com sucesso!'})
+        except Exception as save_error:
+             print(f"Erro ao salvar o arquivo da base de dados em {caminho_destino}: {save_error}")
+             return jsonify({'sucesso': False, 'mensagem': f'Erro ao salvar o arquivo no servidor: {save_error}'}), 500
+
+    except Exception as e:
+        print(f"Erro na rota /atualizar-base: {str(e)}")
+        return jsonify({'sucesso': False, 'mensagem': f'Erro interno ao atualizar a base: {str(e)}'}), 500
+
 @app.route('/admin')
 def admin():
     """Rota para a página de administração."""
     return render_template('admin.html')
 
 if __name__ == '__main__':
-    # DEBUG EXTRA - Mostra estrutura de arquivos
-    print("\nESTRUTURA DE ARQUIVOS:")
-    for root, dirs, files in os.walk(BASE_DIR):
-        print(f"{root}: {files}")
-    
+    # Verifica se o diretório de dados existe (não tenta criar)
+    if not os.path.isdir(USER_DATA_PATH):
+        print(f"\nAVISO IMPORTANTE: O diretório de dados configurado NÃO existe ou não é um diretório:")
+        print(f"'{USER_DATA_PATH}'")
+        print("A aplicação pode não funcionar corretamente sem este diretório e seus arquivos.")
+        print("Certifique-se de que o caminho está correto e acessível.")
+    else:
+        print(f"\nDiretório de dados '{USER_DATA_PATH}' encontrado.")
+
+    print("\nIniciando a aplicação Flask...")
+    # Executa o servidor Flask
+    # host='0.0.0.0' permite acesso de outras máquinas na rede
+    # debug=True é útil para desenvolvimento, mas desative em produção
     app.run(host='0.0.0.0', port=5000, debug=True)
+

@@ -233,22 +233,26 @@ def processar_validacao(uf: str, nfe: str, pedido: str, data_recebimento: str,
 def salvar_registro(dados: Dict[str, Any], caminho_arquivo: str) -> bool:
     """
     Salva os dados de uma validação em um arquivo CSV.
+    
+    Args:
+        dados: Dicionário contendo os dados da validação.
+        caminho_arquivo: Caminho para o arquivo CSV onde os dados serão salvos.
+        
+    Returns:
+        True se o salvamento for bem-sucedido, False caso contrário.
     """
     try:
         # Cria um DataFrame com os dados
         df = pd.DataFrame([dados])
-        
-        # Verifica se o diretório existe, se não, cria
-        os.makedirs(os.path.dirname(caminho_arquivo), exist_ok=True)
         
         # Verifica se o arquivo já existe
         arquivo_existe = os.path.isfile(caminho_arquivo)
         
         # Salva os dados (append se o arquivo já existir)
         if arquivo_existe:
-            df.to_csv(caminho_arquivo, mode='a', header=False, index=False, encoding='utf-8')
+            df.to_csv(caminho_arquivo, mode='a', header=False, index=False)
         else:
-            df.to_csv(caminho_arquivo, index=False, encoding='utf-8')
+            df.to_csv(caminho_arquivo, index=False)
         
         return True
     except Exception as e:
@@ -258,15 +262,19 @@ def salvar_registro(dados: Dict[str, Any], caminho_arquivo: str) -> bool:
 def exportar_registros_para_excel(caminho_csv: str, caminho_excel: str) -> bool:
     """
     Exporta os registros de um arquivo CSV para um arquivo Excel.
+    
+    Args:
+        caminho_csv: Caminho para o arquivo CSV contendo os registros.
+        caminho_excel: Caminho para o arquivo Excel onde os registros serão salvos.
+        
+    Returns:
+        True se a exportação for bem-sucedida, False caso contrário.
     """
     try:
         # Verifica se o arquivo CSV existe
         if not os.path.isfile(caminho_csv):
             print(f"Arquivo CSV não encontrado: {caminho_csv}")
             return False
-        
-        # Verifica se o diretório existe, se não, cria
-        os.makedirs(os.path.dirname(caminho_excel), exist_ok=True)
         
         # Carrega os dados do CSV
         df = pd.read_csv(caminho_csv)
