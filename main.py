@@ -37,7 +37,7 @@ caminho_data = r"C:\Users\joao.miranda\OneDrive - VIDEOMAR REDE NORDESTE S A\Ár
 
 # Copiar a base de notas para o diretório de dados se não existir
 if not os.path.exists(app.config['BASE_NOTAS']):
-    original_base = f"{caminho_data}\\Base de notas.xlsx"
+    original_base = f"{caminho_data}\\Base_de_notas.xlsx"
     if os.path.exists(original_base):
         import shutil
         shutil.copy(original_base, app.config['BASE_NOTAS'])
@@ -164,7 +164,7 @@ def atualizar_base():
             })
         
         # Salvar o arquivo
-        filename = secure_filename('Base\ de\ notas.xlsx')
+        filename = secure_filename('Base_de_notas.xlsx')
         arquivo.save(app.config['BASE_NOTAS'])
         
         return jsonify({
