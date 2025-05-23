@@ -162,8 +162,8 @@ def atualizar_base():
             print(f"Base de dados atualizada com sucesso em: {caminho_destino}")
             return jsonify({'sucesso': True, 'mensagem': 'Base de dados atualizada com sucesso!'})
         except Exception as save_error:
-             print(f"Erro ao salvar o arquivo da base de dados em {caminho_destino}: {save_error}")
-             return jsonify({'sucesso': False, 'mensagem': f'Erro ao salvar o arquivo no servidor: {save_error}'}), 500
+            print(f"Erro ao salvar o arquivo da base de dados em {caminho_destino}: {save_error}")
+            return jsonify({'sucesso': False, 'mensagem': f'Erro ao salvar o arquivo no servidor: {save_error}'}), 500
 
     except Exception as e:
         print(f"Erro na rota /atualizar-base: {str(e)}")
