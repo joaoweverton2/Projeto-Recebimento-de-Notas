@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('result-uf').textContent = data.uf;
                 document.getElementById('result-nfe').textContent = data.nfe;
                 document.getElementById('result-pedido').textContent = data.pedido;
-                document.getElementById('result-data').textContent = formatarData(data.data_recebimento, true);
+                document.getElementById('result-data').textContent = data.data_recebimento.split('-').reverse().join('/');
                 document.getElementById('result-planejamento').textContent = data.data_planejamento;
                 
                 const decisaoElement = document.getElementById('result-decisao');
@@ -155,12 +155,13 @@ document.addEventListener('DOMContentLoaded', function() {
 function formatarData(dataString, isRecebimento = false) {
     if (!dataString) return '';
     
-    // Se for data de recebimento, retorna exatamente o que foi digitado
+    // Para data de recebimento, usa o valor original sem conversão
     if (isRecebimento) {
-        return dataString.split('-').reverse().join('/'); // Formata YYYY-MM-DD para DD/MM/YYYY
+        // Remove qualquer informação de timezone que possa ter sido adicionada
+        return dataString.substring(0, 10).split('-').reverse().join('/');
     }
     
-    // Para outras datas, formata normalmente
+    // Para outras datas, mantém a formatação normal
     const data = new Date(dataString);
     return data.toLocaleDateString('pt-BR');
 }
