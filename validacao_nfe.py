@@ -62,7 +62,7 @@ def extrair_mes_ano_planejamento(data_planejamento: str) -> Tuple[int, int]:
         print(f"Erro ao extrair mês e ano de '{data_planejamento}': {e}")
         return 0, 0
 
-def extrair_mes_ano_recebimento(data_recebimento: str) -> Tuple[int, int]:
+def extrair_mes_ano_recebimento(data_utc: str) -> Tuple[int, int]:
     """
     Extrai o mês e o ano da data de recebimento.
     
@@ -76,15 +76,15 @@ def extrair_mes_ano_recebimento(data_recebimento: str) -> Tuple[int, int]:
         # Tenta diferentes formatos de data
         for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
             try:
-                data = datetime.strptime(data_recebimento, fmt)
+                data = datetime.strptime(data_utc, fmt)
                 return data.year, data.month
             except ValueError:
                 continue
         
         # Se nenhum formato funcionar, levanta exceção
-        raise ValueError(f"Formato de data não reconhecido: {data_recebimento}")
+        raise ValueError(f"Formato de data não reconhecido: {data_utc}")
     except Exception as e:
-        print(f"Erro ao extrair mês e ano de '{data_recebimento}': {e}")
+        print(f"Erro ao extrair mês e ano de '{data_utc}': {e}")
         return 0, 0
 
 def validar_nota_fiscal(uf: str, nfe: int, pedido: int, base_dados: pd.DataFrame) -> bool:
@@ -133,7 +133,7 @@ def obter_data_planejamento(uf: str, nfe: int, pedido: int, base_dados: pd.DataF
         return resultado['Planejamento'].iloc[0]
     return ""
 
-def verificar_abertura_jira(data_planejamento: str, data_recebimento: str) -> str:
+def verificar_abertura_jira(data_planejamento: str, data_utc: str) -> str:
     """
     Verifica se um JIRA deve ser aberto imediatamente ou após o fechamento do mês.
     
@@ -148,7 +148,7 @@ def verificar_abertura_jira(data_planejamento: str, data_recebimento: str) -> st
         String indicando se pode abrir JIRA ou se deve esperar.
     """
     ano_plan, mes_plan = extrair_mes_ano_planejamento(data_planejamento)
-    ano_rec, mes_rec = extrair_mes_ano_recebimento(data_recebimento)
+    ano_rec, mes_rec = extrair_mes_ano_recebimento(data_utc)
     
     # Verifica se a extração foi bem-sucedida
     if ano_plan == 0 or mes_plan == 0 or ano_rec == 0 or mes_rec == 0:
@@ -160,7 +160,7 @@ def verificar_abertura_jira(data_planejamento: str, data_recebimento: str) -> st
     else:
         return "Abrir JIRA após o fechamento do mês"
 
-def processar_validacao(uf: str, nfe: str, pedido: str, data_recebimento: str, 
+def processar_validacao(uf: str, nfe: str, pedido: str, data_utc: str, 
                     caminho_base: str) -> Dict[str, Any]:
     """
     Processa a validação completa de uma nota fiscal.
@@ -179,7 +179,7 @@ def processar_validacao(uf: str, nfe: str, pedido: str, data_recebimento: str,
         'uf': uf,
         'nfe': nfe,
         'pedido': pedido,
-        'data_recebimento': data_recebimento,
+        'data_recebimento': data_utc,
         'valido': False,
         'data_planejamento': '',
         'decisao': '',
@@ -213,7 +213,7 @@ def processar_validacao(uf: str, nfe: str, pedido: str, data_recebimento: str,
             return resultado
         
         # Verifica se deve abrir JIRA
-        decisao = verificar_abertura_jira(data_planejamento, data_recebimento)
+        decisao = verificar_abertura_jira(data_planejamento, data_utc)
         
         # Atualiza o resultado
         resultado['valido'] = True
