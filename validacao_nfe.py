@@ -20,11 +20,7 @@ except:
         locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil')
     except:
         pass  # Se não conseguir configurar o locale, usaremos uma abordagem alternativa
-    
-# Novo caminho da pasta Data
-caminho_data = r"C:\Users\joao.miranda\OneDrive - VIDEOMAR REDE NORDESTE S A\Área de Trabalho\Projeto-Recebimento-de-Notas\data" 
-
-# Mapeamento de nomes de meses em português para números
+  Mapeamento de nomes de meses em português para números
 MESES = {
     'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4, 'maio': 5, 'junho': 6,
     'julho': 7, 'agosto': 8, 'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
