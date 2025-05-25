@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('result-uf').textContent = data.uf;
                 document.getElementById('result-nfe').textContent = data.nfe;
                 document.getElementById('result-pedido').textContent = data.pedido;
-                document.getElementById('result-data').textContent = formatarData(data.data_recebimento);
+                document.getElementById('result-data').textContent = formatarDataRecebimento(data.data_recebimento);
                 document.getElementById('result-planejamento').textContent = data.data_planejamento;
                 
                 const decisaoElement = document.getElementById('result-decisao');
@@ -152,10 +152,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Função para formatar data
-    function formatarData(dataString) {
-        if (!dataString) return '';
-        
-        const data = new Date(dataString);
-        return data.toLocaleDateString('pt-BR');
-    }
+    function formatarDataRecebimento(dataString) {
+    // Recebe no formato YYYY-MM-DD e formata para DD/MM/YYYY
+    const [ano, mes, dia] = dataString.split('-');
+    return `${dia}/${mes}/${ano}`;
+}
 });

@@ -1,1 +1,5 @@
 uf,nfe,pedido,data_recebimento,valido,data_planejamento,decisao,mensagem,timestamp
+RN,15733,75710,2025-04-01,True,2025/maio,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-25 12:05:03
+RN,15733,75710,2025-04-01,True,2025/maio,Abrir JIRA após o fechamento do mês,Validação concluída com sucesso,2025-05-25 12:07:55
+RN,15733,75710,2025-04-01 03:00:00+00:00,True,2025/maio,Erro na validação das datas,Validação concluída com sucesso,2025-05-25 12:08:48
+RN,15733,75710,2025-04-25 03:00:00+00:00,True,2025/maio,Erro na validação das datas,Validação concluída com sucesso,2025-05-25 12:09:01

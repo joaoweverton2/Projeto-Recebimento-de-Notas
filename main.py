@@ -71,8 +71,6 @@ def verificar():
         data_com_timezone = app.config['TIMEZONE'].localize(data_naive)
         # Converter para UTC para armazenamento
         data_utc = data_com_timezone.astimezone(pytz.UTC)
-        # Retornar para strip
-        data_recebimento_str = data_utc.strip()
         
         # Processar a validação (enviar como string formatada)
         resultado = processar_validacao(
