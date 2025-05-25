@@ -75,7 +75,7 @@ def verificar():
         # Processar a validação (enviar como string formatada)
         resultado = processar_validacao(
             uf, nfe, pedido, 
-            data_recebimento_str, # Usa a string original
+            data_utc, # Usa a string original
             app.config['BASE_NOTAS']
         )
         
