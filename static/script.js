@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('result-uf').textContent = data.uf;
                 document.getElementById('result-nfe').textContent = data.nfe;
                 document.getElementById('result-pedido').textContent = data.pedido;
-                document.getElementById('result-data').textContent = formatarData(data.data_recebimento);
+                document.getElementById('result-data').textContent = formatarData(data.data_recebimento, true);
                 document.getElementById('result-planejamento').textContent = data.data_planejamento;
                 
                 const decisaoElement = document.getElementById('result-decisao');
@@ -151,11 +151,17 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
     });
     
-    // Função para formatar data
-    function formatarData(dataString) {
-        if (!dataString) return '';
-        
-        const data = new Date(dataString);
-        return data.toLocaleDateString('pt-BR');
+   // Função para formatar data (mantém a original se for data de recebimento)
+function formatarData(dataString, isRecebimento = false) {
+    if (!dataString) return '';
+    
+    // Se for data de recebimento, retorna exatamente o que foi digitado
+    if (isRecebimento) {
+        return dataString.split('-').reverse().join('/'); // Formata YYYY-MM-DD para DD/MM/YYYY
     }
+    
+    // Para outras datas, formata normalmente
+    const data = new Date(dataString);
+    return data.toLocaleDateString('pt-BR');
+}
 });
