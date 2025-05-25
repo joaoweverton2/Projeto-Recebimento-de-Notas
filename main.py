@@ -71,11 +71,14 @@ def verificar():
         data_com_timezone = app.config['TIMEZONE'].localize(data_naive)
         # Converter para UTC para armazenamento
         data_utc = data_com_timezone.astimezone(pytz.UTC)
+        # Retornar para o formato padrão
+        data_recebimento_str = datetime.strptime(data_utc, '%d-%m-%Y')
+        data_recebimento_str = data_recebimento_str.strip()
         
         # Processar a validação (enviar como string formatada)
         resultado = processar_validacao(
             uf, nfe, pedido, 
-            data_utc, # Usa a string original
+            data_recebimento_str, # Usa a string original
             app.config['BASE_NOTAS']
         )
         
