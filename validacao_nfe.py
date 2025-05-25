@@ -20,7 +20,7 @@ except:
         locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil')
     except:
         pass  # Se não conseguir configurar o locale, usaremos uma abordagem alternativa
-  Mapeamento de nomes de meses em português para números
+# Mapeamento de nomes de meses em português para números
 MESES = {
     'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4, 'maio': 5, 'junho': 6,
     'julho': 7, 'agosto': 8, 'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
@@ -283,9 +283,12 @@ def exportar_registros_para_excel(caminho_csv: str, caminho_excel: str) -> bool:
         print(f"Erro ao exportar registros para Excel: {e}")
         return False
 
-# Função principal para testes
 if __name__ == "__main__":
     # Exemplo de uso
-    base_path = f"{caminho_data}\\Base_de_notas.xlsx"
+    import os
+    caminho_data = os.path.join(os.path.dirname(__file__), 'data')  # Define caminho_data
+    base_path = os.path.join(caminho_data, 'Base_de_notas.xlsx')    # Caminho correto para qualquer SO
+    
+    # Teste com um exemplo válido da sua base
     resultado = processar_validacao("RN", "15733", "75710", "2025-05-15", base_path)
     print(resultado)
