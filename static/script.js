@@ -17,10 +17,10 @@ document.addEventListener('DOMContentLoaded', function() {
         let isValid = true;
         
         // Validar UF
-        const uf = document.getElementById('uf').value.trim().toUpperCase();
+        const uf = document.getElementById('uf').value.trim();
         const ufError = document.getElementById('uf-error');
-        if (uf.length !== 6 || !/^[A-Z]{6}$/.test(uf)) {
-            ufError.textContent = 'UF deve conter até 6 letras';
+        if (!uf || isNaN(uf) || parseInt(uf) <= 0) {
+            ufError.textContent = 'UF deve conter até 6 caracteres';
             isValid = false;
         } else {
             ufError.textContent = '';
