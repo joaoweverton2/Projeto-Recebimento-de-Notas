@@ -22,7 +22,7 @@
                     <form id="nfeForm" action="/verificar" method="POST">
                         <div class="form-group">
                             <label for="uf">UF:</label>
-                            <input type="text" id="uf" name="uf" required maxlength="5" 
+                            <input type="text" id="uf" name="uf" required maxlength="6" 
                                    placeholder="Ex: SP" class="uppercase">
                             <span class="error-message" id="uf-error"></span>
                         </div>
@@ -118,7 +118,7 @@
                             <li>A combinação de UF, NFe e Pedido deve existir na base de dados</li>
                             <li>Se o mês e ano da data de planejamento forem menores ou iguais aos da data de recebimento, então "Pode abrir JIRA"</li>
                             <li>Caso contrário, "Abrir JIRA após o fechamento do mês"</li>
-                            <li>Caso contrário, "UF's da região de SP devem ser inseridas da seguinte maneira: Mococa: SP-MOC, Ourinhos: SP-ORN, Registro: SP-RGT, Sorocaba: - SP-SOC, Itupeva: SP-ITV"</li>				
+                            <li>Observação - "As Siglas da região de SP devem ser inseridas da seguinte maneira: Mococa: SP-MOC, Ourinhos: SP-ORN, Registro: SP-RGT, Sorocaba: - SP-SOC, Itupeva: SP-ITV"</li>				
                         </ul>
                         <p>Todos os dados inseridos são armazenados para consultas futuras.</p>
                     </div>
