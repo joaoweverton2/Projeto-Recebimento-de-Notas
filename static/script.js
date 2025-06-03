@@ -19,8 +19,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Validar UF
         const uf = document.getElementById('uf').value.trim().toUpperCase();
         const ufError = document.getElementById('uf-error');
-        if (uf.length !== 2 || !/^[A-Z]{2}$/.test(uf)) {
-            ufError.textContent = 'UF deve conter exatamente 2 letras';
+        if (uf.length !== 6 || !/^[A-Z]{2}$/.test(uf)) {
+            ufError.textContent = 'UF deve conter até 6 letras';
             isValid = false;
         } else {
             ufError.textContent = '';
