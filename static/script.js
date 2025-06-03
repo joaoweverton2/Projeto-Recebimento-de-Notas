@@ -16,15 +16,15 @@ document.addEventListener('DOMContentLoaded', function() {
     function validateForm() {
         let isValid = true;
         
-        // Validar UF
-        const uf = document.getElementById('uf').value.trim();
-        const ufError = document.getElementById('uf-error');
-        if (!uf || isNaN(uf) || parseInt(uf) <= 0) {
-            ufError.textContent = 'UF deve conter até 6 caracteres';
-            isValid = false;
-        } else {
-            ufError.textContent = '';
-        }
+	// Validar UF
+	const uf = document.getElementById('uf').value.trim();
+	const ufError = document.getElementById('uf-error');
+	if (!uf || uf.length > 6) {  // Apenas verificação de comprimento
+    	ufError.textContent = 'UF deve conter até 6 caracteres';
+    	isValid = false;
+	} else {
+    	ufError.textContent = '';
+	}
         
         // Validar NFe
         const nfe = document.getElementById('nfe').value.trim();
