@@ -10,6 +10,10 @@ import pytz
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from pathlib import Path
+from database import DatabaseManager
+
+# Inicialize o gerenciador do banco de dados
+db_manager = DatabaseManager()
 
 # Configurações da aplicação
 app = Flask(__name__)
@@ -83,15 +87,7 @@ def verificar():
         if resultado['valido']:
             # Adicionar timestamp ao registro
             resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
-            # Salvar o registro no arquivo CSV
-            salvar_registro(resultado, app.config['REGISTROS_CSV'])
-            
-            # Exportar para Excel se o arquivo CSV existir
-            if os.path.exists(app.config['REGISTROS_CSV']):
-                exportar_registros_para_excel(
-                    app.config['REGISTROS_CSV'], app.config['REGISTROS_EXCEL']
-                )
+            db_manager.save_verification(resultado)
         
         return jsonify(resultado)
     
@@ -110,26 +106,40 @@ def download_registros():
         Arquivo Excel para download.
     """
     try:
-        # Verificar se o arquivo existe
-        if not os.path.exists(app.config['REGISTROS_EXCEL']):
+        # Exportar para Excel temporário
+        temp_excel = app.config['DATABASE_FOLDER'] / 'temp_registros.xlsx'
+        if db_manager.export_to_excel(str(temp_excel)):
+            return send_file(
+                str(temp_excel),
+                as_attachment=True,
+                download_name='registros_notas_fiscais.xlsx',
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:
             return jsonify({
                 'sucesso': False,
-                'mensagem': 'Arquivo de registros não encontrado'
+                'mensagem': 'Erro ao gerar arquivo Excel'
             })
-        
-        # Enviar o arquivo para download
-        return send_file(
-            app.config['REGISTROS_EXCEL'],
-            as_attachment=True,
-            download_name='registros_notas_fiscais.xlsx',
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
     
     except Exception as e:
         return jsonify({
             'sucesso': False,
             'mensagem': f'Erro ao baixar o arquivo: {str(e)}'
         })
+
+# Adicione uma nova rota para inicialização (opcional)
+@app.route('/init-db', methods=['GET'])
+def init_db():
+    """Rota para inicializar o banco de dados (usar apenas uma vez)"""
+    try:
+        # Importar dados do Excel existente
+        if os.path.exists(app.config['registros']):
+            db_manager.import_from_excel(str(app.config['registros']))
+            return jsonify({'sucesso': True, 'mensagem': 'Banco de dados inicializado'})
+        else:
+            return jsonify({'sucesso': False, 'mensagem': 'Arquivo de registros não encontrado'})
+    except Exception as e:
+        return jsonify({'sucesso': False, 'mensagem': f'Erro: {str(e)}'})
 
 @app.route('/atualizar-base', methods=['POST'])
 def atualizar_base():
