@@ -14,6 +14,7 @@ from database import DatabaseManager
 
 # Inicialize o gerenciador do banco de dados
 db_manager = DatabaseManager()
+import sqlite3
 
 # Configurações da aplicação
 app = Flask(__name__)
@@ -25,8 +26,41 @@ app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
 BASE_DIR = Path(__file__).parent.absolute()
 sys.path.insert(0, str(BASE_DIR))
 
+# Garantir que a pasta data existe e tem permissões
+data_dir = os.path.join(BASE_DIR, 'data')
+os.makedirs(data_dir, exist_ok=True)
+os.chmod(data_dir, 0o777)  # Permissões amplas (ajuste conforme necessidade de segurança)
+
+# Configuração do banco de dados SQLite
+app.config['DATABASE'] = BASE_DIR / 'data' / 'registros.db'
+app.config['DATABASE_FOLDER'] = BASE_DIR / 'data'
+app.config['BASE_NOTAS'] = BASE_DIR / 'data' / 'Base_de_notas.xlsx'
+
+# Garantir que os diretórios existam
+app.config['DATABASE_FOLDER'].mkdir(exist_ok=True)
+
+# Criar banco de dados e tabela se não existirem
+def init_db():
+    with sqlite3.connect(app.config['DATABASE']) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS registros (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uf TEXT NOT NULL,
+                nfe TEXT NOT NULL,
+                pedido TEXT NOT NULL,
+                data_recebimento TEXT NOT NULL,
+                data_planejamento TEXT NOT NULL,
+                decisao TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+        ''')
+        conn.commit()
+
+init_db()
+
 # Importação do módulo de validação
-from validacao_nfe import processar_validacao, salvar_registro, exportar_registros_para_excel
+from validacao_nfe import processar_validacao
 
 # Configuração de caminhos usando pathlib (garante funcionamento em qualquer SO)
 app.config['UPLOAD_FOLDER'] = BASE_DIR / 'uploads'
@@ -83,11 +117,26 @@ def verificar():
             app.config['BASE_NOTAS']
         )
         
-        # Se a validação for bem-sucedida, salvar o registro
+        # Se a validação for bem-sucedida, salvar o registro no SQLite
         if resultado['valido']:
             # Adicionar timestamp ao registro
             resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             db_manager.save_verification(resultado)
+            
+            with sqlite3.connect(app.config['DATABASE']) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO registros 
+                    (uf, nfe, pedido, data_recebimento, data_planejamento, decisao, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    uf, nfe, pedido, 
+                    data_recebimento_str,
+                    resultado['data_planejamento'],
+                    resultado['decisao'],
+                    timestamp
+                ))
+                conn.commit()
         
         return jsonify(resultado)
     
@@ -99,12 +148,6 @@ def verificar():
 
 @app.route('/download/registros', methods=['GET'])
 def download_registros():
-    """
-    Permite o download do arquivo de registros em formato Excel.
-    
-    Returns:
-        Arquivo Excel para download.
-    """
     try:
         # Exportar para Excel temporário
         temp_excel = app.config['DATABASE_FOLDER'] / 'temp_registros.xlsx'
@@ -120,11 +163,40 @@ def download_registros():
                 'sucesso': False,
                 'mensagem': 'Erro ao gerar arquivo Excel'
             })
+
+        # Verificar se o banco de dados existe
+        if not os.path.exists(app.config['DATABASE']):
+            return jsonify({
+                'sucesso': False,
+                'mensagem': 'Banco de dados não encontrado'
+            })
+
+        # Consultar registros
+        with sqlite3.connect(app.config['DATABASE']) as conn:
+            df = pd.read_sql('SELECT * FROM registros ORDER BY timestamp DESC', conn)
+        
+        if df.empty:
+            return jsonify({
+                'sucesso': False,
+                'mensagem': 'Nenhum registro encontrado no banco de dados'
+            })
+        
+        # Criar arquivo Excel temporário
+        temp_excel = os.path.join(app.config['DATABASE_FOLDER'], 'registros_temp.xlsx')
+        df.to_excel(temp_excel, index=False)
+        
+        # Enviar arquivo para download
+        return send_file(
+            temp_excel,
+            as_attachment=True,
+            download_name=f'registros_notas_fiscais_{datetime.now().strftime("%Y%m%d")}.xlsx',
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
     
     except Exception as e:
         return jsonify({
             'sucesso': False,
-            'mensagem': f'Erro ao baixar o arquivo: {str(e)}'
+            'mensagem': f'Erro ao gerar arquivo: {str(e)}'
         })
 
 # Adicione uma nova rota para inicialização (opcional)
