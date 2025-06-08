@@ -119,18 +119,28 @@ def verificar():
         
         # Se a validação for bem-sucedida, salvar o registro no SQLite
         if resultado['valido']:
-            # Adicionar timestamp ao registro
-            resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            db_manager.save_verification(resultado)
+            # Garanta que está passando TODOS os campos necessários
+            dados_registro = {
+                'uf': uf,
+                'nfe': nfe,
+                'pedido': pedido,
+                'data_recebimento': data_recebimento_str,
+                'valido': True,
+                'data_planejamento': resultado.get('data_planejamento', ''),
+                'decisao': resultado.get('decisao', ''),
+                'mensagem': resultado.get('mensagem', ''),
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
             
-            return jsonify(resultado)
+            if not db_manager.save_verification(dados_registro):
+                logger.error("Falha ao salvar no banco de dados")
+            
+        return jsonify(resultado)
     
     except Exception as e:
-        return jsonify({
-            'valido': False,
-            'mensagem': f'Erro durante o processamento: {str(e)}'
-        })
-
+        logger.error(f"Erro na verificação: {e}")
+        return jsonify({'valido': False, 'mensagem': str(e)})
+    
 @app.route('/download/registros', methods=['GET'])
 def download_registros():
     try:
