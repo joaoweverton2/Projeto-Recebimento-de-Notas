@@ -137,20 +137,20 @@ def download_registros():
         # Exportar para Excel temporário
         temp_excel = app.config['DATABASE_FOLDER'] / 'registros_exportados.xlsx'
         
-# Exporta do SQLite para Excel
-        if db_manager.export_to_excel(temp_excel):
+        # Exporta os dados
+        if db_manager.export_to_excel(str(temp_excel)):
             return send_file(
                 str(temp_excel),
                 as_attachment=True,
                 download_name='registros_notas_fiscais.xlsx',
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
-        else:
-            return jsonify({
-                'sucesso': False,
-                'mensagem': 'Erro ao gerar arquivo Excel'
-            })
-    
+        
+        return jsonify({
+            'sucesso': False,
+            'mensagem': 'Falha ao gerar arquivo Excel'
+        })
+        
     except Exception as e:
         return jsonify({
             'sucesso': False,
