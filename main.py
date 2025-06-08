@@ -12,52 +12,52 @@ from werkzeug.utils import secure_filename
 from pathlib import Path
 from database import DatabaseManager
 
-# Inicialize o gerenciador do banco de dados
-db_manager = DatabaseManager()
-import sqlite3
-
 # Configurações da aplicação
 app = Flask(__name__)
 
-# Configurar timezone padrão
-app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
-
-# Configurações de caminhos ABSOLUTAMENTE CONFIAVEIS
+# Configurações (mantenha as existentes)
 BASE_DIR = Path(__file__).parent.absolute()
 sys.path.insert(0, str(BASE_DIR))
+app.config['UPLOAD_FOLDER'] = BASE_DIR / 'uploads'
+app.config['DATABASE_FOLDER'] = BASE_DIR / 'data'
+app.config['BASE_NOTAS'] = BASE_DIR / 'data' / 'Base_de_notas.xlsx'
+app.config['REGISTROS_EXCEL'] = BASE_DIR / 'data' / 'registros.xlsx'
+app.config['REGISTROS_DB'] = BASE_DIR / 'data' / 'registros.db'
+
+# Crie a instância do DatabaseManager
+db_manager = DatabaseManager(app.config['REGISTROS_DB'])
+
+# Rota para inicialização (opcional - pode ser chamada uma vez)
+@app.route('/init-db')
+def init_db():
+    """Rota para inicializar o banco de dados"""
+    try:
+        # Importar dados do Excel se existir
+        if os.path.exists(app.config['REGISTROS_EXCEL']):
+            success = db_manager.import_from_excel(app.config['REGISTROS_EXCEL'])
+            if success:
+                count = db_manager.get_record_count()
+                return jsonify({
+                    'success': True,
+                    'message': f'Banco de dados inicializado com {count} registros'
+                })
+        return jsonify({
+            'success': False,
+            'message': 'Arquivo de registros não encontrado'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Erro: {str(e)}'
+        })
+
+# Configurar timezone padrão
+app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
 
 # Garantir que a pasta data existe e tem permissões
 data_dir = os.path.join(BASE_DIR, 'data')
 os.makedirs(data_dir, exist_ok=True)
 os.chmod(data_dir, 0o777)  # Permissões amplas (ajuste conforme necessidade de segurança)
-
-# Configuração do banco de dados SQLite
-app.config['DATABASE'] = BASE_DIR / 'data' / 'registros.db'
-app.config['DATABASE_FOLDER'] = BASE_DIR / 'data'
-app.config['BASE_NOTAS'] = BASE_DIR / 'data' / 'Base_de_notas.xlsx'
-
-# Garantir que os diretórios existam
-app.config['DATABASE_FOLDER'].mkdir(exist_ok=True)
-
-# Criar banco de dados e tabela se não existirem
-def init_db():
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS registros (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                uf TEXT NOT NULL,
-                nfe TEXT NOT NULL,
-                pedido TEXT NOT NULL,
-                data_recebimento TEXT NOT NULL,
-                data_planejamento TEXT NOT NULL,
-                decisao TEXT NOT NULL,
-                timestamp TEXT NOT NULL
-            )
-        ''')
-        conn.commit()
-
-init_db()
 
 # Importação do módulo de validação
 from validacao_nfe import processar_validacao
@@ -123,22 +123,7 @@ def verificar():
             resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             db_manager.save_verification(resultado)
             
-            with sqlite3.connect(app.config['DATABASE']) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO registros 
-                    (uf, nfe, pedido, data_recebimento, data_planejamento, decisao, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    uf, nfe, pedido, 
-                    data_recebimento_str,
-                    resultado['data_planejamento'],
-                    resultado['decisao'],
-                    timestamp
-                ))
-                conn.commit()
-        
-        return jsonify(resultado)
+            return jsonify(resultado)
     
     except Exception as e:
         return jsonify({
@@ -150,8 +135,10 @@ def verificar():
 def download_registros():
     try:
         # Exportar para Excel temporário
-        temp_excel = app.config['DATABASE_FOLDER'] / 'temp_registros.xlsx'
-        if db_manager.export_to_excel(str(temp_excel)):
+        temp_excel = app.config['DATABASE_FOLDER'] / 'registros_exportados.xlsx'
+        
+# Exporta do SQLite para Excel
+        if db_manager.export_to_excel(temp_excel):
             return send_file(
                 str(temp_excel),
                 as_attachment=True,
@@ -163,56 +150,30 @@ def download_registros():
                 'sucesso': False,
                 'mensagem': 'Erro ao gerar arquivo Excel'
             })
-
-        # Verificar se o banco de dados existe
-        if not os.path.exists(app.config['DATABASE']):
-            return jsonify({
-                'sucesso': False,
-                'mensagem': 'Banco de dados não encontrado'
-            })
-
-        # Consultar registros
-        with sqlite3.connect(app.config['DATABASE']) as conn:
-            df = pd.read_sql('SELECT * FROM registros ORDER BY timestamp DESC', conn)
-        
-        if df.empty:
-            return jsonify({
-                'sucesso': False,
-                'mensagem': 'Nenhum registro encontrado no banco de dados'
-            })
-        
-        # Criar arquivo Excel temporário
-        temp_excel = os.path.join(app.config['DATABASE_FOLDER'], 'registros_temp.xlsx')
-        df.to_excel(temp_excel, index=False)
-        
-        # Enviar arquivo para download
-        return send_file(
-            temp_excel,
-            as_attachment=True,
-            download_name=f'registros_notas_fiscais_{datetime.now().strftime("%Y%m%d")}.xlsx',
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
     
     except Exception as e:
         return jsonify({
             'sucesso': False,
-            'mensagem': f'Erro ao gerar arquivo: {str(e)}'
+            'mensagem': f'Erro ao baixar o arquivo: {str(e)}'
         })
 
-# Adicione uma nova rota para inicialização (opcional)
-@app.route('/init-db', methods=['GET'])
-def init_db():
-    """Rota para inicializar o banco de dados (usar apenas uma vez)"""
+# Adicione esta rota para verificação
+@app.route('/check-db')
+def check_db():
+    """Rota para verificar o status do banco de dados"""
     try:
-        # Importar dados do Excel existente
-        if os.path.exists(app.config['registros']):
-            db_manager.import_from_excel(str(app.config['registros']))
-            return jsonify({'sucesso': True, 'mensagem': 'Banco de dados inicializado'})
-        else:
-            return jsonify({'sucesso': False, 'mensagem': 'Arquivo de registros não encontrado'})
+        count = db_manager.get_record_count()
+        return jsonify({
+            'total_registros': count,
+            'database_path': str(app.config['REGISTROS_DB']),
+            'status': 'OK'
+        })
     except Exception as e:
-        return jsonify({'sucesso': False, 'mensagem': f'Erro: {str(e)}'})
-
+        return jsonify({
+            'error': str(e),
+            'status': 'ERROR'
+        })
+        
 @app.route('/atualizar-base', methods=['POST'])
 def atualizar_base():
     """
