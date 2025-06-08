@@ -1,5 +1,5 @@
 """
-Módulo para gerenciamento do banco de dados SQLite do sistema de verificação de notas fiscais
+database.py - Versão corrigida com tratamento completo de importação/exportação
 """
 
 import sqlite3
@@ -15,22 +15,15 @@ logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     def __init__(self, db_path: str = 'data/registros.db'):
-        """
-        Inicializa o gerenciador do banco de dados.
-        
-        Args:
-            db_path: Caminho para o arquivo do banco de dados SQLite
-        """
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize_db()
+        self._migrate_legacy_data()
 
     def _get_connection(self) -> sqlite3.Connection:
-        """Retorna uma conexão com o banco de dados."""
         return sqlite3.connect(self.db_path)
 
     def _initialize_db(self) -> None:
-        """Cria a tabela se não existir."""
         with self._get_connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS registros (
@@ -48,177 +41,118 @@ class DatabaseManager:
             """)
             conn.commit()
 
+    def _migrate_legacy_data(self) -> None:
+        """Migra dados do arquivo Excel legado para o SQLite"""
+        legacy_path = Path('data/registros.xlsx')
+        if legacy_path.exists():
+            try:
+                df = pd.read_excel(legacy_path)
+                
+                # Verifica e corrige a estrutura do DataFrame
+                required_cols = ['uf', 'nfe', 'pedido', 'data_recebimento']
+                if all(col in df.columns for col in required_cols):
+                    # Preenche valores padrão para colunas opcionais
+                    df['valido'] = df.get('valido', True)
+                    df['data_planejamento'] = df.get('data_planejamento', '')
+                    df['decisao'] = df.get('decisao', '')
+                    df['mensagem'] = df.get('mensagem', '')
+                    df['timestamp'] = pd.to_datetime(df.get('timestamp', datetime.now()))
+                    
+                    # Converte tipos
+                    df['nfe'] = pd.to_numeric(df['nfe'], errors='coerce').astype('Int64')
+                    df['pedido'] = pd.to_numeric(df['pedido'], errors='coerce').astype('Int64')
+                    df = df.dropna(subset=['uf', 'nfe', 'pedido'])
+                    
+                    # Importa para o SQLite
+                    with self._get_connection() as conn:
+                        df.to_sql('registros', conn, if_exists='append', index=False)
+                        conn.commit()
+                    
+                    # Renomeia o arquivo legado para evitar reimportação
+                    legacy_path.rename(Path('data/registros_importados.xlsx'))
+                    logger.info(f"Dados legados migrados: {len(df)} registros")
+                
+            except Exception as e:
+                logger.error(f"Erro na migração de dados legados: {e}")
+
     def save_verification(self, data: Dict[str, Any]) -> bool:
-        """
-        Salva um registro de verificação no banco de dados.
-        
-        Args:
-            data: Dicionário contendo os dados da verificação:
-                - uf (str): Unidade Federativa
-                - nfe (int/str): Número da NFe
-                - pedido (int/str): Número do pedido
-                - data_recebimento (str): Data de recebimento
-                - valido (bool): Status da validação
-                - data_planejamento (str, optional): Data de planejamento
-                - decisao (str, optional): Decisão da validação
-                - mensagem (str, optional): Mensagem adicional
-                - timestamp (str, optional): Data/hora do registro
-                
-        Returns:
-            bool: True se salvou com sucesso, False caso contrário
-        """
         try:
-            # Verificação dos campos obrigatórios
             required = ['uf', 'nfe', 'pedido', 'data_recebimento', 'valido']
-            if missing := [field for field in required if field not in data]:
-                raise ValueError(f"Campos obrigatórios faltando: {missing}")
-
-            # Prepara os valores
-            values = (
-                str(data['uf']),
-                int(data['nfe']),
-                int(data['pedido']),
-                str(data['data_recebimento']),
-                bool(data['valido']),
-                str(data.get('data_planejamento', '')),
-                str(data.get('decisao', '')),
-                str(data.get('mensagem', '')),
-                str(data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-            )
-
-            # Query SQL
-            query = """
-                INSERT INTO registros (
-                    uf, nfe, pedido, data_recebimento, valido,
-                    data_planejamento, decisao, mensagem, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-
-            # Execução
-            with self._get_connection() as conn:
-                conn.execute(query, values)
-                conn.commit()
-                return True
-
-        except sqlite3.Error as e:
-            logger.error(f"Erro no banco de dados: {e}")
-            return False
-        except ValueError as e:
-            logger.error(f"Erro de validação: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Erro inesperado: {e}")
-            return False
-
-    def import_from_excel(self, excel_path: str) -> bool:
-        """
-        Importa dados de um arquivo Excel para o banco de dados.
-        
-        Args:
-            excel_path: Caminho para o arquivo Excel
+            if not all(field in data for field in required):
+                raise ValueError("Campos obrigatórios faltando")
             
-        Returns:
-            bool: True se a importação foi bem-sucedida, False caso contrário
-        """
-        try:
-            df = pd.read_excel(excel_path)
-            
-            # Verifica colunas obrigatórias
-            required = ['uf', 'nfe', 'pedido', 'data_recebimento']
-            if missing := [col for col in required if col not in df.columns]:
-                raise ValueError(f"Colunas obrigatórias faltando: {missing}")
-
-            # Preenche valores padrão
-            df['valido'] = df.get('valido', True).astype(bool)
-            df['timestamp'] = pd.to_datetime(df.get('timestamp', datetime.now())).dt.strftime('%Y-%m-%d %H:%M:%S')
-
-            # Converte tipos
-            df['nfe'] = df['nfe'].astype(int)
-            df['pedido'] = df['pedido'].astype(int)
-
             with self._get_connection() as conn:
-                df.to_sql('registros', conn, if_exists='append', index=False)
+                conn.execute("""
+                    INSERT INTO registros (
+                        uf, nfe, pedido, data_recebimento, valido,
+                        data_planejamento, decisao, mensagem, timestamp
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    str(data['uf']),
+                    int(data['nfe']),
+                    int(data['pedido']),
+                    str(data['data_recebimento']),
+                    bool(data['valido']),
+                    str(data.get('data_planejamento', '')),
+                    str(data.get('decisao', '')),
+                    str(data.get('mensagem', '')),
+                    str(data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                ))
                 conn.commit()
-                logger.info(f"Importados {len(df)} registros do Excel")
                 return True
                 
+        except sqlite3.Error as e:
+            logger.error(f"Erro SQL: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Erro na importação: {e}")
+            logger.error(f"Erro ao salvar: {e}")
             return False
 
     def export_to_excel(self, output_path: str) -> bool:
-        """
-        Exporta os registros para um arquivo Excel.
-        
-        Args:
-            output_path: Caminho onde o arquivo será salvo
-            
-        Returns:
-            bool: True se a exportação foi bem-sucedida, False caso contrário
-        """
         try:
             with self._get_connection() as conn:
-                df = pd.read_sql("SELECT * FROM registros ORDER BY timestamp DESC", conn)
+                # Query que replica exatamente a estrutura do arquivo original
+                df = pd.read_sql("""
+                    SELECT 
+                        uf, nfe, pedido, data_recebimento,
+                        valido, data_planejamento, decisao,
+                        mensagem, timestamp
+                    FROM registros
+                    ORDER BY timestamp DESC
+                """, conn)
                 
-                # Converte booleanos para 0/1 para melhor compatibilidade com Excel
-                if 'valido' in df.columns:
-                    df['valido'] = df['valido'].astype(int)
+                # Garante a ordem das colunas
+                df = df[['uf', 'nfe', 'pedido', 'data_recebimento', 'valido',
+                         'data_planejamento', 'decisao', 'mensagem', 'timestamp']]
+                
+                # Formatação consistente
+                df['valido'] = df['valido'].astype(bool)
+                df['data_recebimento'] = pd.to_datetime(df['data_recebimento'])
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
                 
                 df.to_excel(output_path, index=False)
                 return True
                 
         except sqlite3.Error as e:
-            logger.error(f"Erro no banco de dados: {e}")
+            logger.error(f"Erro SQL na exportação: {e}")
             return False
         except Exception as e:
             logger.error(f"Erro na exportação: {e}")
             return False
 
     def get_record_count(self) -> int:
-        """Retorna o número total de registros."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM registros")
             return cursor.fetchone()[0]
 
-    def get_all_records(self) -> List[Dict]:
-        """Retorna todos os registros."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM registros ORDER BY timestamp DESC")
-            columns = [column[0] for column in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
-
-
-# Teste da classe
+# Teste da exportação
 if __name__ == "__main__":
-    # Configura logging
-    logging.basicConfig(level=logging.DEBUG)
-    
-    # Teste básico
     db = DatabaseManager()
+    print(f"Total de registros: {db.get_record_count()}")
     
-    # Teste save_verification
-    test_data = {
-        'uf': 'SP',
-        'nfe': '99999',
-        'pedido': '88888',
-        'data_recebimento': '2023-01-01',
-        'valido': True
-    }
-    
-    print("Testando save_verification...")
-    if db.save_verification(test_data):
-        print("✅ save_verification funcionando")
-    else:
-        print("❌ save_verification falhou")
-    
-    # Teste get_record_count
-    print(f"\nTotal de registros: {db.get_record_count()}")
-    
-    # Teste export_to_excel
-    print("\nTestando export_to_excel...")
+    # Teste de exportação
     if db.export_to_excel('test_export.xlsx'):
-        print("✅ export_to_excel funcionando")
+        print("Exportação realizada com sucesso!")
     else:
-        print("❌ export_to_excel falhou")
+        print("Falha na exportação")
