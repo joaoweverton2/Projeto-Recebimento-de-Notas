@@ -10,6 +10,7 @@ import pytz
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from pathlib import Path
+import sqlite3
 
 # Configurações da aplicação
 app = Flask(__name__)
@@ -21,8 +22,36 @@ app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
 BASE_DIR = Path(__file__).parent.absolute()
 sys.path.insert(0, str(BASE_DIR))
 
+# Configuração do banco de dados SQLite
+app.config['DATABASE'] = BASE_DIR / 'data' / 'registros.db'
+app.config['DATABASE_FOLDER'] = BASE_DIR / 'data'
+app.config['BASE_NOTAS'] = BASE_DIR / 'data' / 'Base_de_notas.xlsx'
+
+# Garantir que os diretórios existam
+app.config['DATABASE_FOLDER'].mkdir(exist_ok=True)
+
+# Criar banco de dados e tabela se não existirem
+def init_db():
+    with sqlite3.connect(app.config['DATABASE']) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS registros (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uf TEXT NOT NULL,
+                nfe TEXT NOT NULL,
+                pedido TEXT NOT NULL,
+                data_recebimento TEXT NOT NULL,
+                data_planejamento TEXT NOT NULL,
+                decisao TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+        ''')
+        conn.commit()
+
+init_db()
+
 # Importação do módulo de validação
-from validacao_nfe import processar_validacao, salvar_registro, exportar_registros_para_excel
+from validacao_nfe import processar_validacao, exportar_registros_para_excel
 
 # Configuração de caminhos usando pathlib (garante funcionamento em qualquer SO)
 app.config['UPLOAD_FOLDER'] = BASE_DIR / 'uploads'
@@ -79,19 +108,25 @@ def verificar():
             app.config['BASE_NOTAS']
         )
         
-        # Se a validação for bem-sucedida, salvar o registro
+        # Se a validação for bem-sucedida, salvar o registro no SQLite
         if resultado['valido']:
             # Adicionar timestamp ao registro
             resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            # Salvar o registro no arquivo CSV
-            salvar_registro(resultado, app.config['REGISTROS_CSV'])
-            
-            # Exportar para Excel se o arquivo CSV existir
-            if os.path.exists(app.config['REGISTROS_CSV']):
-                exportar_registros_para_excel(
-                    app.config['REGISTROS_CSV'], app.config['REGISTROS_EXCEL']
-                )
+            with sqlite3.connect(app.config['DATABASE']) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO registros 
+                    (uf, nfe, pedido, data_recebimento, data_planejamento, decisao, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    uf, nfe, pedido, 
+                    data_recebimento_str,
+                    resultado['data_planejamento'],
+                    resultado['decisao'],
+                    timestamp
+                ))
+                conn.commit()
         
         return jsonify(resultado)
     
@@ -110,16 +145,23 @@ def download_registros():
         Arquivo Excel para download.
     """
     try:
-        # Verificar se o arquivo existe
-        if not os.path.exists(app.config['REGISTROS_EXCEL']):
+        # Consultar todos os registros do banco de dados
+        with sqlite3.connect(app.config['DATABASE']) as conn:
+            df = pd.read_sql('SELECT * FROM registros ORDER BY timestamp DESC', conn)
+        
+        if df.empty:
             return jsonify({
                 'sucesso': False,
-                'mensagem': 'Arquivo de registros não encontrado'
+                'mensagem': 'Nenhum registro encontrado'
             })
+        
+        # Criar arquivo Excel temporário
+        temp_excel = app.config['DATABASE_FOLDER'] / 'registros_temp.xlsx'
+        df.to_excel(temp_excel, index=False)
         
         # Enviar o arquivo para download
         return send_file(
-            app.config['REGISTROS_EXCEL'],
+            str(temp_excel),
             as_attachment=True,
             download_name='registros_notas_fiscais.xlsx',
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
