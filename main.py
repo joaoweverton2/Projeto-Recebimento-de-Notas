@@ -22,6 +22,11 @@ app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
 BASE_DIR = Path(__file__).parent.absolute()
 sys.path.insert(0, str(BASE_DIR))
 
+# Garantir que a pasta data existe e tem permissões
+data_dir = os.path.join(BASE_DIR, 'data')
+os.makedirs(data_dir, exist_ok=True)
+os.chmod(data_dir, 0o777)  # Permissões amplas (ajuste conforme necessidade de segurança)
+
 # Configuração do banco de dados SQLite
 app.config['DATABASE'] = BASE_DIR / 'data' / 'registros.db'
 app.config['DATABASE_FOLDER'] = BASE_DIR / 'data'
@@ -138,39 +143,40 @@ def verificar():
 
 @app.route('/download/registros', methods=['GET'])
 def download_registros():
-    """
-    Permite o download do arquivo de registros em formato Excel.
-    
-    Returns:
-        Arquivo Excel para download.
-    """
     try:
-        # Consultar todos os registros do banco de dados
+        # Verificar se o banco de dados existe
+        if not os.path.exists(app.config['DATABASE']):
+            return jsonify({
+                'sucesso': False,
+                'mensagem': 'Banco de dados não encontrado'
+            })
+
+        # Consultar registros
         with sqlite3.connect(app.config['DATABASE']) as conn:
             df = pd.read_sql('SELECT * FROM registros ORDER BY timestamp DESC', conn)
         
         if df.empty:
             return jsonify({
                 'sucesso': False,
-                'mensagem': 'Nenhum registro encontrado'
+                'mensagem': 'Nenhum registro encontrado no banco de dados'
             })
         
         # Criar arquivo Excel temporário
-        temp_excel = app.config['DATABASE_FOLDER'] / 'registros_temp.xlsx'
+        temp_excel = os.path.join(app.config['DATABASE_FOLDER'], 'registros_temp.xlsx')
         df.to_excel(temp_excel, index=False)
         
-        # Enviar o arquivo para download
+        # Enviar arquivo para download
         return send_file(
-            str(temp_excel),
+            temp_excel,
             as_attachment=True,
-            download_name='registros_notas_fiscais.xlsx',
+            download_name=f'registros_notas_fiscais_{datetime.now().strftime("%Y%m%d")}.xlsx',
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     
     except Exception as e:
         return jsonify({
             'sucesso': False,
-            'mensagem': f'Erro ao baixar o arquivo: {str(e)}'
+            'mensagem': f'Erro ao gerar arquivo: {str(e)}'
         })
 
 @app.route('/atualizar-base', methods=['POST'])
