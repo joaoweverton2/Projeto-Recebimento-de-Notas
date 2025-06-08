@@ -51,7 +51,7 @@ def init_db():
 init_db()
 
 # Importação do módulo de validação
-from validacao_nfe import processar_validacao, exportar_registros_para_excel
+from validacao_nfe import processar_validacao
 
 # Configuração de caminhos usando pathlib (garante funcionamento em qualquer SO)
 app.config['UPLOAD_FOLDER'] = BASE_DIR / 'uploads'
