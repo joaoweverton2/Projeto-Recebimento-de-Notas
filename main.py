@@ -1,23 +1,23 @@
 """
 Aplicação principal para o Sistema de Verificação de Notas Fiscais
-Versão 3.0 - Com suporte a PostgreSQL e SQLite via SQLAlchemy
+Versão 4.1 - Compatível com database.py atualizado
 """
 
 import os
 import sys
-import pandas as pd
 from datetime import datetime, timedelta
 import pytz
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from pathlib import Path
 from dotenv import load_dotenv
+from sqlalchemy import text  # Importação adicionada para corrigir o erro
 
 # Carrega variáveis de ambiente
 load_dotenv()
 
-# Importa o novo gerenciador de banco de dados
-from database import DatabaseManager, db, migrate
+# Importa o gerenciador de banco de dados
+from database import DatabaseManager, db, migrate, RegistroNF  # Adicionado RegistroNF na importação
 
 # Configurações da aplicação
 app = Flask(__name__)
@@ -61,12 +61,6 @@ def index():
 def verificar():
     """
     Processa a requisição de verificação de nota fiscal.
-    
-    Recebe os dados do formulário, valida contra a base de dados,
-    determina se um JIRA deve ser aberto e salva o registro.
-    
-    Returns:
-        JSON com o resultado da verificação.
     """
     try:
         # Obter dados do formulário
@@ -75,29 +69,29 @@ def verificar():
         pedido = request.form.get('pedido', '').strip()
         data_recebimento_str = request.form.get('data_recebimento', '').strip()
         
-        # Converter para datetime SEM timezone primeiro
-        data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
-        # Adicionar timezone (Brasília)
-        data_com_timezone = app.config['TIMEZONE'].localize(data_naive)
-        # Converter para UTC para armazenamento
-        data_utc = data_com_timezone.astimezone(pytz.UTC)
-        
-        # Processar a validação (enviar como string formatada)
+        # Processar a validação
         resultado = processar_validacao(
             uf, nfe, pedido, 
-            data_recebimento_str, # Usa a string original
+            data_recebimento_str,
             app.config['BASE_NOTAS']
         )
         
         # Se a validação for bem-sucedida, salvar o registro no banco
         if resultado.get('valido', False):
-            # Adicionar timestamp ao registro
-            resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            registro_data = {
+                'uf': uf,
+                'nfe': int(nfe),
+                'pedido': int(pedido),
+                'data_recebimento': data_recebimento_str,
+                'valido': resultado['valido'],
+                'data_planejamento': resultado.get('data_planejamento', ''),
+                'decisao': resultado.get('decisao', ''),
+                'mensagem': resultado.get('mensagem', '')
+            }
             
-            # Salva usando o novo gerenciador
-            success = db_manager.save_verification(resultado)
+            registro = db_manager.criar_registro(registro_data)
             
-            if not success:
+            if not registro:
                 resultado['mensagem'] += ' (Aviso: Erro ao salvar no banco de dados)'
             
         return jsonify(resultado)
@@ -112,11 +106,9 @@ def verificar():
 def download_registros():
     """Baixa os registros em formato Excel."""
     try:
-        # Exportar para Excel temporário
         temp_excel = app.config['DATABASE_FOLDER'] / 'registros_exportados.xlsx'
         
-        # Exporta os dados usando o novo gerenciador
-        if db_manager.export_to_excel(str(temp_excel)):
+        if db_manager.exportar_para_excel(str(temp_excel)):
             return send_file(
                 str(temp_excel),
                 as_attachment=True,
@@ -139,16 +131,18 @@ def download_registros():
 def check_db():
     """Rota para verificar o status do banco de dados."""
     try:
-        integrity = db_manager.validate_data_integrity()
+        with db.engine.connect() as conn:
+            conn.execute(text("SELECT 1"))  # Agora usando text importado corretamente
+            conectividade = "OK"
+        
+        total_registros = db.session.query(RegistroNF).count()
         
         return jsonify({
-            'total_registros': integrity['total_registros'],
-            'database_type': integrity['database_type'],
-            'conectividade': integrity['conectividade'],
-            'registros_invalidos': integrity['registros_invalidos'],
-            'problemas': integrity['problemas'],
+            'total_registros': total_registros,
+            'database_type': str(db.engine.url),
+            'conectividade': conectividade,
             'database_url': os.getenv('DATABASE_URL', 'SQLite local'),
-            'status': 'OK' if integrity['conectividade'] == 'OK' else 'ERROR'
+            'status': 'OK'
         })
         
     except Exception as e:
@@ -157,43 +151,10 @@ def check_db():
             'status': 'ERROR'
         })
 
-@app.route('/init-db')
-def init_db():
-    """Rota para inicializar/verificar o banco de dados."""
-    try:
-        with app.app_context():
-            # Força criação das tabelas
-            db.create_all()
-            
-            # Verifica integridade
-            integrity = db_manager.validate_data_integrity()
-            
-            return jsonify({
-                'success': True,
-                'message': f'Banco de dados inicializado/verificado',
-                'total_registros': integrity['total_registros'],
-                'database_type': integrity['database_type'],
-                'conectividade': integrity['conectividade']
-            })
-            
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Erro ao inicializar banco: {str(e)}'
-        })
-
 @app.route('/atualizar-base', methods=['POST'])
 def atualizar_base():
-    """
-    Atualiza a base de dados de notas fiscais.
-    
-    Recebe um arquivo Excel enviado pelo usuário e o salva como a nova base de dados.
-    
-    Returns:
-        JSON com o resultado da atualização.
-    """
+    """Atualiza a base de dados de notas fiscais."""
     try:
-        # Verificar se o arquivo foi enviado
         if 'arquivo' not in request.files:
             return jsonify({
                 'sucesso': False,
@@ -202,21 +163,18 @@ def atualizar_base():
         
         arquivo = request.files['arquivo']
         
-        # Verificar se o arquivo tem nome
         if arquivo.filename == '':
             return jsonify({
                 'sucesso': False,
                 'mensagem': 'Nenhum arquivo selecionado'
             })
         
-        # Verificar se é um arquivo Excel
         if not arquivo.filename.endswith(('.xlsx', '.xls')):
             return jsonify({
                 'sucesso': False,
                 'mensagem': 'O arquivo deve ser um Excel (.xlsx ou .xls)'
             })
         
-        # Salvar o arquivo
         filename = secure_filename('Base_de_notas.xlsx')
         arquivo.save(app.config['BASE_NOTAS'])
         
@@ -240,41 +198,18 @@ def admin():
 def api_registros():
     """API para listar todos os registros."""
     try:
-        registros = db_manager.get_all_records()
+        registros = db_manager.listar_registros()
+        registros_dict = [r.to_dict() for r in registros]
         return jsonify({
             'success': True,
-            'data': registros,
-            'total': len(registros)
+            'data': registros_dict,
+            'total': len(registros_dict)
         })
     except Exception as e:
         return jsonify({
             'success': False,
             'error': str(e)
         })
-
-# Comando CLI para migrações
-@app.cli.command()
-def init_db_cli():
-    """Inicializa o banco de dados via CLI."""
-    try:
-        db.create_all()
-        print("✅ Banco de dados inicializado com sucesso!")
-        
-        integrity = db_manager.validate_data_integrity()
-        print(f"📊 Total de registros: {integrity['total_registros']}")
-        print(f"🗄️ Tipo do banco: {integrity['database_type']}")
-        
-    except Exception as e:
-        print(f"❌ Erro ao inicializar banco: {e}")
-
-@app.cli.command()
-def migrate_legacy():
-    """Migra dados legados via CLI."""
-    try:
-        db_manager._migrate_legacy_data()
-        print("✅ Migração de dados legados concluída!")
-    except Exception as e:
-        print(f"❌ Erro na migração: {e}")
 
 if __name__ == '__main__':
     # DEBUG EXTRA - Mostra estrutura de arquivos
@@ -284,7 +219,7 @@ if __name__ == '__main__':
         indent = ' ' * 2 * level
         print(f"{indent}{os.path.basename(root)}/")
         subindent = ' ' * 2 * (level + 1)
-        for file in files[:5]:  # Limita a 5 arquivos por diretório
+        for file in files[:5]:
             print(f"{subindent}{file}")
         if len(files) > 5:
             print(f"{subindent}... e mais {len(files) - 5} arquivos")
@@ -292,15 +227,13 @@ if __name__ == '__main__':
     # Verifica conectividade do banco
     with app.app_context():
         try:
-            integrity = db_manager.validate_data_integrity()
-            print(f"\n🗄️ BANCO DE DADOS:")
-            print(f"   Tipo: {integrity['database_type']}")
-            print(f"   Conectividade: {integrity['conectividade']}")
-            print(f"   Registros: {integrity['total_registros']}")
-            if integrity['problemas']:
-                print(f"   Problemas: {', '.join(integrity['problemas'])}")
+            with db.engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                print("\n🗄️ BANCO DE DADOS:")
+                print(f"   Tipo: {db.engine.url}")
+                print("   Conectividade: OK")
+                print(f"   Registros: {db.session.query(RegistroNF).count()}")
         except Exception as e:
             print(f"\n❌ ERRO NO BANCO: {e}")
     
     app.run(host='0.0.0.0', port=5000, debug=True)
-
