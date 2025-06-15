@@ -2,10 +2,9 @@
 # exit on error
 set -o errexit
 
-# Instala a versão correta do Python primeiro
-pyenv install 3.11.9 -s
-pyenv global 3.11.9
+# Verifica a versão do Python
+echo "Python version: $(python 3.11.9)"
 
-# Depois instala as dependências
+# Instala dependências
 pip install --upgrade pip
 pip install -r requirements.txt
