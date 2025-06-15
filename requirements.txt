@@ -11,4 +11,5 @@ psycopg2-binary==2.9.7
 python-dotenv==1.0.0
 setuptools==68.2.2 
 wheel==0.41.3 
-
+setuptools==68.2.2
+pip==23.3.1

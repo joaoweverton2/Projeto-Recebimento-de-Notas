@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="Projeto-Recebimento-de-Notas-1",
+    name="projeto-recebimento-de-notas",
     version="0.1",
     packages=find_packages(),
     install_requires=[
@@ -12,4 +12,5 @@ setup(
         "python-dotenv==1.0.0",
         "numpy==1.23.5"
     ],
+    python_requires='>=3.11',
 )
