@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Importa o novo gerenciador de banco de dados
-from database_sqlalchemy import DatabaseManager, db, migrate
+from database import DatabaseManager, db, migrate
 
 # Configurações da aplicação
 app = Flask(__name__)
