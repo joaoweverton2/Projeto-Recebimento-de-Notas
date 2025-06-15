@@ -1,6 +1,6 @@
 """
 Módulo de gerenciamento do banco de dados com SQLAlchemy para o sistema de notas fiscais
-Versão 4.2 - Com tratamento robusto de duplicatas e migração otimizada
+Versão 4.3 - Com tratamento robusto de formatos de data
 """
 
 import os
@@ -8,12 +8,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, TypedDict, Any
 import logging
+import locale
 
 import pandas as pd
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy import exc, text, func
+
+# Configura locale para parsing de meses em português
+locale.setlocale(locale.LC_TIME, 'pt_BR.utf8')
 
 # Configuração de logging
 logging.basicConfig(
@@ -36,7 +40,7 @@ class RegistroNF(db.Model):
     __tablename__ = 'registros_nf'
     
     id = db.Column(db.Integer, primary_key=True)
-    uf = db.Column(db.String(6), nullable=False)  # Permite até 6 caracteres
+    uf = db.Column(db.String(6), nullable=False)
     nfe = db.Column(db.BigInteger, nullable=False)
     pedido = db.Column(db.BigInteger, nullable=False)
     data_recebimento = db.Column(db.Date, nullable=False)
@@ -103,6 +107,49 @@ class DatabaseManager:
         with app.app_context():
             self._initialize_database()
     
+    def _parse_date(self, date_str: str) -> datetime.date:
+        """
+        Converte uma string de data em objeto date, com tratamento de vários formatos.
+        Suporta:
+        - YYYY-MM-DD
+        - YYYY/MM/DD
+        - YYYY-MM
+        - YYYY/MM
+        - YYYY/MMMM (português)
+        - YYYY-MM-DDTHH:MM:SS (ISO com tempo)
+        """
+        if not date_str or not isinstance(date_str, str):
+            return datetime.now().date()
+            
+        date_str = date_str.strip().upper()
+        
+        # Remove time part if exists
+        if 'T' in date_str:
+            date_str = date_str.split('T')[0]
+        
+        formats_to_try = [
+            '%Y-%m-%d',    # ISO format
+            '%Y/%m/%d',     # Slash format
+            '%Y-%m',        # Year-month only
+            '%Y/%m',       # Year/month only
+            '%Y/%B',       # Year/month name (portuguese)
+            '%d/%m/%Y',     # Brazilian format
+            '%m/%d/%Y',     # US format
+        ]
+        
+        for fmt in formats_to_try:
+            try:
+                dt = datetime.strptime(date_str, fmt)
+                # For formats without day, use first day of month
+                if fmt in ['%Y-%m', '%Y/%m', '%Y/%B']:
+                    return dt.date().replace(day=1)
+                return dt.date()
+            except ValueError:
+                continue
+        
+        logger.warning(f"Formato de data não reconhecido: {date_str}. Usando data atual.")
+        return datetime.now().date()
+    
     def _get_database_url(self, app: Flask) -> str:
         """Obtém a URL do banco de dados com fallback para SQLite."""
         database_url = os.getenv('DATABASE_URL')
@@ -147,14 +194,12 @@ class DatabaseManager:
         def clean_duplicates():
             """Remove registros duplicados do banco de dados."""
             try:
-                # Encontra duplicatas mantendo o registro mais antigo
                 subquery = db.session.query(
                     RegistroNF.uf,
                     RegistroNF.nfe,
                     func.min(RegistroNF.id).label('min_id')
                 ).group_by(RegistroNF.uf, RegistroNF.nfe).subquery()
                 
-                # Deleta os registros mais recentes (que não são o min_id)
                 deleted = db.session.query(RegistroNF).filter(
                     RegistroNF.id.notin_(db.session.query(subquery.c.min_id))
                 ).delete(synchronize_session=False)
@@ -207,12 +252,10 @@ class DatabaseManager:
         if not all(col in df.columns for col in ['uf', 'nfe']):
             return df
         
-        # Remove duplicatas no próprio arquivo
         df['uf'] = df['uf'].astype(str).str.strip().str.upper().str[:6]
         df['nfe'] = pd.to_numeric(df['nfe'], errors='coerce')
         df = df.dropna(subset=['nfe'])
         
-        # Remove linhas duplicadas no DataFrame
         df_duplicates = df.duplicated(subset=['uf', 'nfe'], keep='first')
         if df_duplicates.any():
             logger.warning(f"Removendo {df_duplicates.sum()} registros duplicados do arquivo")
@@ -241,12 +284,9 @@ class DatabaseManager:
             return 0
         
         df = self._preprocess_dataframe(df)
-        
-        # Verifica registros existentes no banco
         existing_pairs = self._get_existing_pairs()
-        
         imported_count = 0
-        batch_size = 50  # Processa em lotes para melhor performance
+        batch_size = 50
         
         for i in range(0, len(df), batch_size):
             batch = df.iloc[i:i + batch_size]
@@ -255,7 +295,6 @@ class DatabaseManager:
                     uf = str(row['uf'])
                     nfe = int(row['nfe'])
                     
-                    # Verifica se já existe no banco
                     if (uf, nfe) in existing_pairs:
                         logger.debug(f"Registro duplicado ignorado: {uf}-{nfe}")
                         continue
@@ -264,7 +303,7 @@ class DatabaseManager:
                         registro = self._create_registro_from_row(row)
                         db.session.add(registro)
                         imported_count += 1
-                        existing_pairs.add((uf, nfe))  # Adiciona ao conjunto de existentes
+                        existing_pairs.add((uf, nfe))
                     except exc.IntegrityError:
                         db.session.rollback()
                         logger.warning(f"Registro duplicado (concorrência): {uf}-{nfe}")
@@ -290,22 +329,23 @@ class DatabaseManager:
     
     def _preprocess_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Realiza pré-processamento no DataFrame antes da importação."""
-        # Preenche valores padrão
         df['valido'] = df.get('valido', True)
         df['data_planejamento'] = df.get('data_planejamento', '').fillna('')
         df['decisao'] = df.get('decisao', '').fillna('')
         df['mensagem'] = df.get('mensagem', '').fillna('')
         
-        # Converte tipos e formata
-        df['uf'] = df['uf'].str.upper().str[:6]  # Garante UF com até 6 caracteres
+        df['uf'] = df['uf'].str.upper().str[:6]
         df['nfe'] = pd.to_numeric(df['nfe'], errors='coerce').dropna().astype('int64')
         df['pedido'] = pd.to_numeric(df['pedido'], errors='coerce').dropna().astype('int64')
         
-        # Converte datas
-        df['data_recebimento'] = pd.to_datetime(df['data_recebimento'], errors='coerce')
-        df['data_planejamento'] = pd.to_datetime(df['data_planejamento'], errors='coerce')
+        # Convert dates using our robust parser
+        df['data_recebimento'] = df['data_recebimento'].apply(
+            lambda x: self._parse_date(str(x)) if pd.notna(x) else datetime.now().date()
+        )
+        df['data_planejamento'] = df['data_planejamento'].apply(
+            lambda x: self._parse_date(str(x)) if pd.notna(x) else None
+        )
         
-        # Remove linhas inválidas
         df = df.dropna(subset=['uf', 'nfe', 'pedido', 'data_recebimento'])
         
         return df
@@ -316,14 +356,13 @@ class DatabaseManager:
             uf=str(row['uf']),
             nfe=int(row['nfe']),
             pedido=int(row['pedido']),
-            data_recebimento=row['data_recebimento'].to_pydatetime(),
+            data_recebimento=row['data_recebimento'],
             valido=bool(row['valido']),
-            data_planejamento=row['data_planejamento'].to_pydatetime() if pd.notna(row['data_planejamento']) else None,
+            data_planejamento=row['data_planejamento'] if pd.notna(row['data_planejamento']) else None,
             decisao=str(row['decisao']) if pd.notna(row['decisao']) else None,
             mensagem=str(row['mensagem']) if pd.notna(row['mensagem']) else None
         )
     
-    # Operações CRUD
     def criar_registro(self, data: RegistroNFInput) -> Optional[RegistroNF]:
         """Cria um novo registro de nota fiscal no banco de dados."""
         try:
@@ -331,9 +370,9 @@ class DatabaseManager:
                 uf=data['uf'].upper()[:6],
                 nfe=data['nfe'],
                 pedido=data['pedido'],
-                data_recebimento=datetime.strptime(data['data_recebimento'], '%Y-%m-%d').date(),
+                data_recebimento=self._parse_date(data['data_recebimento']),
                 valido=data.get('valido', True),
-                data_planejamento=datetime.strptime(data['data_planejamento'], '%Y-%m-%d').date() if data.get('data_planejamento') else None,
+                data_planejamento=self._parse_date(data['data_planejamento']) if data.get('data_planejamento') else None,
                 decisao=data.get('decisao'),
                 mensagem=data.get('mensagem')
             )
@@ -373,11 +412,11 @@ class DatabaseManager:
             if 'pedido' in data:
                 registro.pedido = data['pedido']
             if 'data_recebimento' in data:
-                registro.data_recebimento = datetime.strptime(data['data_recebimento'], '%Y-%m-%d').date()
+                registro.data_recebimento = self._parse_date(data['data_recebimento'])
             if 'valido' in data:
                 registro.valido = data['valido']
             if 'data_planejamento' in data:
-                registro.data_planejamento = datetime.strptime(data['data_planejamento'], '%Y-%m-%d').date() if data['data_planejamento'] else None
+                registro.data_planejamento = self._parse_date(data['data_planejamento']) if data.get('data_planejamento') else None
             if 'decisao' in data:
                 registro.decisao = data['decisao']
             if 'mensagem' in data:
@@ -438,59 +477,11 @@ class DatabaseManager:
             logger.error(f"Falha ao exportar dados: {str(e)}")
             return False
 
-    def _parse_date(self, date_str: str) -> datetime.date:
-        """Converte uma string de data em objeto date, com tratamento de vários formatos."""
-        try:
-            # Primeiro tenta o formato esperado (YYYY-MM-DD)
-            return datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            try:
-                # Tenta formato com barras (YYYY/MM/DD)
-                return datetime.strptime(date_str, '%Y/%m/%d').date()
-            except ValueError:
-                try:
-                    # Tenta formato com mês por extenso (YYYY/MMMM)
-                    if '/' in date_str and len(date_str.split('/')[1]) > 2:
-                        return datetime.strptime(date_str, '%Y/%B').date().replace(day=1)
-                except ValueError:
-                    pass
-                
-                # Se nenhum formato funcionar, usa a data atual como fallback
-                logger.warning(f"Formato de data inválido: {date_str}. Usando data atual como fallback")
-                return datetime.now().date()
-    
-    def criar_registro(self, data: RegistroNFInput) -> Optional[RegistroNF]:
-        """Cria um novo registro de nota fiscal no banco de dados."""
-        try:
-            registro = RegistroNF(
-                uf=data['uf'].upper()[:6],
-                nfe=data['nfe'],
-                pedido=data['pedido'],
-                data_recebimento=self._parse_date(data['data_recebimento']),
-                valido=data.get('valido', True),
-                data_planejamento=self._parse_date(data['data_planejamento']) if data.get('data_planejamento') else None,
-                decisao=data.get('decisao'),
-                mensagem=data.get('mensagem')
-            )
-            
-            db.session.add(registro)
-            db.session.commit()
-            logger.info(f"Registro criado: {registro}")
-            return registro
-        except exc.IntegrityError:
-            db.session.rollback()
-            logger.warning(f"Registro já existe: {data['uf']}-{data['nfe']}")
-            return None
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Falha ao criar registro: {str(e)}")
-            return None        
-
 # Testes
 if __name__ == "__main__":
     from flask import Flask
     
-    print("=== TESTE DO DATABASE MANAGER (UF 6 caracteres) ===")
+    print("=== TESTE DO DATABASE MANAGER (TRATAMENTO DE DATAS) ===")
     
     app = Flask(__name__)
     app.config['TESTING'] = True
@@ -502,30 +493,31 @@ if __name__ == "__main__":
         # Criar tabelas
         db.create_all()
         
-        # Teste com UF longo e valores únicos
-        print("\nTestando registro com UF de 6 caracteres...")
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        test_data = {
-            'uf': f'SP-XYZ-{timestamp[-4:]}',  # UF com 6 caracteres + único
-            'nfe': int(timestamp),  # NFE único
-            'pedido': int(timestamp) + 1,  # Pedido único
-            'data_recebimento': '2024-01-15',
-            'valido': True,
-            'mensagem': f'Teste de UF longo - {timestamp}'
-        }
+        # Teste com diferentes formatos de data
+        test_cases = [
+            {'format': 'YYYY-MM-DD', 'date': '2024-01-15'},
+            {'format': 'YYYY/MM/DD', 'date': '2024/01/15'},
+            {'format': 'YYYY-MM', 'date': '2024-01'},
+            {'format': 'YYYY/MM', 'date': '2024/01'},
+            {'format': 'YYYY/MMMM (pt)', 'date': '2024/FEVEREIRO'},
+            {'format': 'DD/MM/YYYY', 'date': '15/01/2024'},
+            {'format': 'ISO com tempo', 'date': '2024-01-15T12:00:00'},
+        ]
         
-        registro = db_manager.criar_registro(test_data)
-        if registro:
-            print(f"✅ Registro criado com UF longo: {registro}")
-            print(f"UF armazenada: {registro.uf} (tamanho: {len(registro.uf)})")
+        for i, test_case in enumerate(test_cases):
+            test_data = {
+                'uf': f'SP{i}',
+                'nfe': 1000 + i,
+                'pedido': 2000 + i,
+                'data_recebimento': test_case['date'],
+                'valido': True,
+                'mensagem': f'Teste de formato: {test_case["format"]}'
+            }
             
-            # Verificação adicional
-            registro_busca = db_manager.obter_registro_por_nfe(test_data['uf'], test_data['nfe'])
-            if registro_busca:
-                print(f"✅ Registro encontrado na busca: {registro_busca}")
+            registro = db_manager.criar_registro(test_data)
+            if registro:
+                print(f"✅ {test_case['format']}: {registro.data_recebimento}")
             else:
-                print("❌ Registro não encontrado na busca")
-        else:
-            print("❌ Falha ao criar registro com UF longo")
+                print(f"❌ Falha com formato {test_case['format']}")
     
     print("\nTeste concluído!")
