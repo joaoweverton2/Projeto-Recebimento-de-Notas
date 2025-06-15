@@ -1,6 +1,6 @@
 """
 Módulo de gerenciamento do banco de dados com SQLAlchemy para o sistema de notas fiscais
-Versão 4.3 - Com tratamento robusto de formatos de data
+Versão 4.4 - Com tratamento robusto de formatos de data sem dependência de locale
 """
 
 import os
@@ -8,16 +8,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, TypedDict, Any
 import logging
-import locale
+import re  # Adicionado para parse alternativo de datas
 
 import pandas as pd
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy import exc, text, func
-
-# Configura locale para parsing de meses em português
-locale.setlocale(locale.LC_TIME, 'pt_BR.utf8')
 
 # Configuração de logging
 logging.basicConfig(
@@ -88,6 +85,13 @@ class RegistroNFInput(TypedDict):
 class DatabaseManager:
     """Gerenciador de banco de dados com operações CRUD para notas fiscais."""
     
+    # Mapeamento de meses em português sem usar locale
+    _MESES_PT = {
+        'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
+        'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
+        'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
+    }
+
     def __init__(self, app: Optional[Flask] = None):
         self.app = app
         if app is not None:
@@ -110,38 +114,40 @@ class DatabaseManager:
     def _parse_date(self, date_str: str) -> datetime.date:
         """
         Converte uma string de data em objeto date, com tratamento de vários formatos.
-        Suporta:
-        - YYYY-MM-DD
-        - YYYY/MM/DD
-        - YYYY-MM
-        - YYYY/MM
-        - YYYY/MMMM (português)
-        - YYYY-MM-DDTHH:MM:SS (ISO com tempo)
+        Versão sem dependência de locale.
         """
         if not date_str or not isinstance(date_str, str):
             return datetime.now().date()
             
-        date_str = date_str.strip().upper()
+        date_str = date_str.strip().lower()
         
-        # Remove time part if exists
-        if 'T' in date_str:
-            date_str = date_str.split('T')[0]
+        # Remove parte do tempo se existir
+        if 't' in date_str:
+            date_str = date_str.split('t')[0]
         
+        # Tenta parse de datas com meses em português (ex: 2024/fevereiro)
+        mes_pt_match = re.match(r'(\d{4})[/-]([a-zç]+)', date_str)
+        if mes_pt_match:
+            ano = int(mes_pt_match.group(1))
+            mes_nome = mes_pt_match.group(2)
+            if mes_nome in self._MESES_PT:
+                return datetime(ano, self._MESES_PT[mes_nome], 1).date()
+        
+        # Tenta formatos numéricos comuns
         formats_to_try = [
-            '%Y-%m-%d',    # ISO format
-            '%Y/%m/%d',     # Slash format
-            '%Y-%m',        # Year-month only
-            '%Y/%m',       # Year/month only
-            '%Y/%B',       # Year/month name (portuguese)
-            '%d/%m/%Y',     # Brazilian format
-            '%m/%d/%Y',     # US format
+            '%Y-%m-%d',    # Formato ISO
+            '%Y/%m/%d',     # Formato com barras
+            '%Y-%m',        # Ano-mês
+            '%Y/%m',        # Ano/mês
+            '%d/%m/%Y',     # Formato brasileiro
+            '%m/%d/%Y',     # Formato americano
         ]
         
         for fmt in formats_to_try:
             try:
                 dt = datetime.strptime(date_str, fmt)
-                # For formats without day, use first day of month
-                if fmt in ['%Y-%m', '%Y/%m', '%Y/%B']:
+                # Para formatos sem dia, usa primeiro dia do mês
+                if fmt in ['%Y-%m', '%Y/%m']:
                     return dt.date().replace(day=1)
                 return dt.date()
             except ValueError:
@@ -490,25 +496,26 @@ if __name__ == "__main__":
     db_manager = DatabaseManager(app)
     
     with app.app_context():
-        # Criar tabelas
+        # Criar tabelas (isso limpa qualquer dado anterior em banco de memória)
+        db.drop_all()
         db.create_all()
         
         # Teste com diferentes formatos de data
         test_cases = [
-            {'format': 'YYYY-MM-DD', 'date': '2024-01-15'},
-            {'format': 'YYYY/MM/DD', 'date': '2024/01/15'},
-            {'format': 'YYYY-MM', 'date': '2024-01'},
-            {'format': 'YYYY/MM', 'date': '2024/01'},
-            {'format': 'YYYY/MMMM (pt)', 'date': '2024/FEVEREIRO'},
-            {'format': 'DD/MM/YYYY', 'date': '15/01/2024'},
-            {'format': 'ISO com tempo', 'date': '2024-01-15T12:00:00'},
+            {'format': 'YYYY-MM-DD', 'date': '2024-01-15', 'nfe': 1000},
+            {'format': 'YYYY/MM/DD', 'date': '2024/01/16', 'nfe': 1001},
+            {'format': 'YYYY-MM', 'date': '2024-02', 'nfe': 1002},
+            {'format': 'YYYY/MM', 'date': '2024/03', 'nfe': 1003},
+            {'format': 'YYYY/MMMM (pt)', 'date': '2024/abril', 'nfe': 1004},
+            {'format': 'DD/MM/YYYY', 'date': '17/05/2024', 'nfe': 1005},
+            {'format': 'ISO com tempo', 'date': '2024-06-18T12:00:00', 'nfe': 1006},
         ]
         
-        for i, test_case in enumerate(test_cases):
+        for test_case in test_cases:
             test_data = {
-                'uf': f'SP{i}',
-                'nfe': 1000 + i,
-                'pedido': 2000 + i,
+                'uf': 'SP',  # Mesma UF para todos
+                'nfe': test_case['nfe'],  # NFE único para cada caso
+                'pedido': 2000 + test_case['nfe'],  # Pedido único
                 'data_recebimento': test_case['date'],
                 'valido': True,
                 'mensagem': f'Teste de formato: {test_case["format"]}'
@@ -516,8 +523,14 @@ if __name__ == "__main__":
             
             registro = db_manager.criar_registro(test_data)
             if registro:
-                print(f"✅ {test_case['format']}: {registro.data_recebimento}")
+                print(f"✅ {test_case['format']}: {registro.data_recebimento} (UF-NFE: {registro.uf}-{registro.nfe})")
             else:
-                print(f"❌ Falha com formato {test_case['format']}")
+                print(f"❌ Falha com formato {test_case['format']} (possível duplicata)")
+        
+        # Teste adicional para verificar todos os registros foram inseridos
+        registros = db_manager.listar_registros()
+        print(f"\nTotal de registros inseridos: {len(registros)}")
+        for r in registros:
+            print(f"- {r.uf}-{r.nfe} ({r.data_recebimento})")
     
     print("\nTeste concluído!")
