@@ -438,6 +438,54 @@ class DatabaseManager:
             logger.error(f"Falha ao exportar dados: {str(e)}")
             return False
 
+    def _parse_date(self, date_str: str) -> datetime.date:
+        """Converte uma string de data em objeto date, com tratamento de vários formatos."""
+        try:
+            # Primeiro tenta o formato esperado (YYYY-MM-DD)
+            return datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            try:
+                # Tenta formato com barras (YYYY/MM/DD)
+                return datetime.strptime(date_str, '%Y/%m/%d').date()
+            except ValueError:
+                try:
+                    # Tenta formato com mês por extenso (YYYY/MMMM)
+                    if '/' in date_str and len(date_str.split('/')[1]) > 2:
+                        return datetime.strptime(date_str, '%Y/%B').date().replace(day=1)
+                except ValueError:
+                    pass
+                
+                # Se nenhum formato funcionar, usa a data atual como fallback
+                logger.warning(f"Formato de data inválido: {date_str}. Usando data atual como fallback")
+                return datetime.now().date()
+    
+    def criar_registro(self, data: RegistroNFInput) -> Optional[RegistroNF]:
+        """Cria um novo registro de nota fiscal no banco de dados."""
+        try:
+            registro = RegistroNF(
+                uf=data['uf'].upper()[:6],
+                nfe=data['nfe'],
+                pedido=data['pedido'],
+                data_recebimento=self._parse_date(data['data_recebimento']),
+                valido=data.get('valido', True),
+                data_planejamento=self._parse_date(data['data_planejamento']) if data.get('data_planejamento') else None,
+                decisao=data.get('decisao'),
+                mensagem=data.get('mensagem')
+            )
+            
+            db.session.add(registro)
+            db.session.commit()
+            logger.info(f"Registro criado: {registro}")
+            return registro
+        except exc.IntegrityError:
+            db.session.rollback()
+            logger.warning(f"Registro já existe: {data['uf']}-{data['nfe']}")
+            return None
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Falha ao criar registro: {str(e)}")
+            return None        
+
 # Testes
 if __name__ == "__main__":
     from flask import Flask
