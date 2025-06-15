@@ -9,4 +9,6 @@ Flask-SQLAlchemy==3.1.1
 Flask-Migrate==4.0.5
 psycopg2-binary==2.9.7
 python-dotenv==1.0.0
+setuptools==68.2.2 
+wheel==0.41.3 
 
