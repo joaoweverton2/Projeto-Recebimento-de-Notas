@@ -1,6 +1,6 @@
 """
 Módulo de gerenciamento do banco de dados com SQLAlchemy para o sistema de notas fiscais
-Versão 4.1 - Ajustado para UF com até 6 caracteres
+Versão 4.2 - Com tratamento robusto de duplicatas e migração otimizada
 """
 
 import os
@@ -13,7 +13,7 @@ import pandas as pd
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from sqlalchemy import exc
+from sqlalchemy import exc, text, func
 
 # Configuração de logging
 logging.basicConfig(
@@ -36,7 +36,7 @@ class RegistroNF(db.Model):
     __tablename__ = 'registros_nf'
     
     id = db.Column(db.Integer, primary_key=True)
-    uf = db.Column(db.String(6), nullable=False)  # Ajustado para 6 caracteres
+    uf = db.Column(db.String(6), nullable=False)  # Permite até 6 caracteres
     nfe = db.Column(db.BigInteger, nullable=False)
     pedido = db.Column(db.BigInteger, nullable=False)
     data_recebimento = db.Column(db.Date, nullable=False)
@@ -142,6 +142,30 @@ class DatabaseManager:
             except Exception as e:
                 logger.error(f"Falha ao inicializar banco: {str(e)}")
                 print(f"❌ Erro ao inicializar banco: {e}")
+        
+        @app.cli.command('db-clean-duplicates')
+        def clean_duplicates():
+            """Remove registros duplicados do banco de dados."""
+            try:
+                # Encontra duplicatas mantendo o registro mais antigo
+                subquery = db.session.query(
+                    RegistroNF.uf,
+                    RegistroNF.nfe,
+                    func.min(RegistroNF.id).label('min_id')
+                ).group_by(RegistroNF.uf, RegistroNF.nfe).subquery()
+                
+                # Deleta os registros mais recentes (que não são o min_id)
+                deleted = db.session.query(RegistroNF).filter(
+                    RegistroNF.id.notin_(db.session.query(subquery.c.min_id))
+                ).delete(synchronize_session=False)
+                
+                db.session.commit()
+                logger.info(f"Removidos {deleted} registros duplicados")
+                print(f"✅ Removidos {deleted} registros duplicados!")
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Falha ao remover duplicatas: {str(e)}")
+                print(f"❌ Erro ao remover duplicatas: {e}")
     
     def _initialize_database(self) -> None:
         """Inicializa o banco de dados e migra dados legados se necessário."""
@@ -172,10 +196,29 @@ class DatabaseManager:
         
         try:
             df = pd.read_excel(legacy_path, engine='openpyxl')
+            df = self._remove_duplicates(df)
             return self._import_dataframe(df)
         except Exception as e:
             logger.error(f"Falha na migração de dados legados: {str(e)}")
             return 0
+    
+    def _remove_duplicates(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Remove registros duplicados do DataFrame antes da importação."""
+        if not all(col in df.columns for col in ['uf', 'nfe']):
+            return df
+        
+        # Remove duplicatas no próprio arquivo
+        df['uf'] = df['uf'].astype(str).str.strip().str.upper().str[:6]
+        df['nfe'] = pd.to_numeric(df['nfe'], errors='coerce')
+        df = df.dropna(subset=['nfe'])
+        
+        # Remove linhas duplicadas no DataFrame
+        df_duplicates = df.duplicated(subset=['uf', 'nfe'], keep='first')
+        if df_duplicates.any():
+            logger.warning(f"Removendo {df_duplicates.sum()} registros duplicados do arquivo")
+            df = df[~df_duplicates]
+        
+        return df
     
     def _find_legacy_file(self) -> Optional[Path]:
         """Procura por arquivos legados em locais conhecidos."""
@@ -191,7 +234,7 @@ class DatabaseManager:
         return None
     
     def _import_dataframe(self, df: pd.DataFrame) -> int:
-        """Importa dados de um DataFrame para o banco de dados."""
+        """Importa dados de um DataFrame para o banco de dados com tratamento de erros."""
         required_cols = ['uf', 'nfe', 'pedido', 'data_recebimento']
         if not all(col in df.columns for col in required_cols):
             logger.error("DataFrame não contém colunas obrigatórias")
@@ -199,40 +242,70 @@ class DatabaseManager:
         
         df = self._preprocess_dataframe(df)
         
-        imported_count = 0
-        for _, row in df.iterrows():
-            try:
-                registro = self._create_registro_from_row(row)
-                db.session.add(registro)
-                imported_count += 1
-            except Exception as e:
-                logger.warning(f"Erro ao importar linha: {str(e)}")
-                continue
+        # Verifica registros existentes no banco
+        existing_pairs = self._get_existing_pairs()
         
+        imported_count = 0
+        batch_size = 50  # Processa em lotes para melhor performance
+        
+        for i in range(0, len(df), batch_size):
+            batch = df.iloc[i:i + batch_size]
+            try:
+                for _, row in batch.iterrows():
+                    uf = str(row['uf'])
+                    nfe = int(row['nfe'])
+                    
+                    # Verifica se já existe no banco
+                    if (uf, nfe) in existing_pairs:
+                        logger.debug(f"Registro duplicado ignorado: {uf}-{nfe}")
+                        continue
+                        
+                    try:
+                        registro = self._create_registro_from_row(row)
+                        db.session.add(registro)
+                        imported_count += 1
+                        existing_pairs.add((uf, nfe))  # Adiciona ao conjunto de existentes
+                    except exc.IntegrityError:
+                        db.session.rollback()
+                        logger.warning(f"Registro duplicado (concorrência): {uf}-{nfe}")
+                        continue
+                
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Erro no lote {i//batch_size}: {str(e)}")
+        
+        logger.info(f"Dados migrados com sucesso: {imported_count}/{len(df)} registros")
+        return imported_count
+    
+    def _get_existing_pairs(self) -> set:
+        """Retorna conjunto de pares (UF, NFe) já existentes no banco."""
+        existing_pairs = set()
         try:
-            db.session.commit()
-            logger.info(f"Dados migrados com sucesso: {imported_count} registros")
-            return imported_count
+            records = db.session.query(RegistroNF.uf, RegistroNF.nfe).all()
+            existing_pairs = {(str(r.uf), int(r.nfe)) for r in records}
         except Exception as e:
-            db.session.rollback()
-            logger.error(f"Falha ao salvar dados migrados: {str(e)}")
-            return 0
+            logger.error(f"Erro ao verificar registros existentes: {str(e)}")
+        return existing_pairs
     
     def _preprocess_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Realiza pré-processamento no DataFrame antes da importação."""
+        # Preenche valores padrão
         df['valido'] = df.get('valido', True)
         df['data_planejamento'] = df.get('data_planejamento', '').fillna('')
         df['decisao'] = df.get('decisao', '').fillna('')
         df['mensagem'] = df.get('mensagem', '').fillna('')
         
-        # Ajustado para permitir até 6 caracteres na UF
-        df['uf'] = df['uf'].str.upper().str[:6]  # Alterado de 2 para 6 caracteres
+        # Converte tipos e formata
+        df['uf'] = df['uf'].str.upper().str[:6]  # Garante UF com até 6 caracteres
         df['nfe'] = pd.to_numeric(df['nfe'], errors='coerce').dropna().astype('int64')
         df['pedido'] = pd.to_numeric(df['pedido'], errors='coerce').dropna().astype('int64')
         
+        # Converte datas
         df['data_recebimento'] = pd.to_datetime(df['data_recebimento'], errors='coerce')
         df['data_planejamento'] = pd.to_datetime(df['data_planejamento'], errors='coerce')
         
+        # Remove linhas inválidas
         df = df.dropna(subset=['uf', 'nfe', 'pedido', 'data_recebimento'])
         
         return df
@@ -255,7 +328,7 @@ class DatabaseManager:
         """Cria um novo registro de nota fiscal no banco de dados."""
         try:
             registro = RegistroNF(
-                uf=data['uf'].upper()[:6],  # Alterado para permitir até 6 caracteres
+                uf=data['uf'].upper()[:6],
                 nfe=data['nfe'],
                 pedido=data['pedido'],
                 data_recebimento=datetime.strptime(data['data_recebimento'], '%Y-%m-%d').date(),
@@ -294,7 +367,7 @@ class DatabaseManager:
                 return None
                 
             if 'uf' in data:
-                registro.uf = data['uf'].upper()[:6]  # Alterado para permitir até 6 caracteres
+                registro.uf = data['uf'].upper()[:6]
             if 'nfe' in data:
                 registro.nfe = data['nfe']
             if 'pedido' in data:
@@ -364,7 +437,6 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Falha ao exportar dados: {str(e)}")
             return False
-# [Todo o código anterior permanece igual...]
 
 # Testes
 if __name__ == "__main__":
