@@ -1,5 +1,6 @@
 """
 Aplicação principal para o Sistema de Verificação de Notas Fiscais
+Versão 3.0 - Com suporte a PostgreSQL e SQLite via SQLAlchemy
 """
 
 import os
@@ -10,77 +11,47 @@ import pytz
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from pathlib import Path
-from database import DatabaseManager
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente
+load_dotenv()
+
+# Importa o novo gerenciador de banco de dados
+from database_sqlalchemy import DatabaseManager, db, migrate
 
 # Configurações da aplicação
 app = Flask(__name__)
 
-# Configurações (mantenha as existentes)
+# Configurações básicas
 BASE_DIR = Path(__file__).parent.absolute()
 sys.path.insert(0, str(BASE_DIR))
+
+# Configurações de diretórios
 app.config['UPLOAD_FOLDER'] = BASE_DIR / 'uploads'
 app.config['DATABASE_FOLDER'] = BASE_DIR / 'data'
 app.config['BASE_NOTAS'] = BASE_DIR / 'data' / 'Base_de_notas.xlsx'
-app.config['REGISTROS_EXCEL'] = BASE_DIR / 'data' / 'registros.xlsx'
-app.config['REGISTROS_DB'] = BASE_DIR / 'data' / 'registros.db'
-
-# Crie a instância do DatabaseManager
-db_manager = DatabaseManager(app.config['REGISTROS_DB'])
-
-# Rota para inicialização (opcional - pode ser chamada uma vez)
-@app.route('/init-db')
-def init_db():
-    """Rota para inicializar o banco de dados"""
-    try:
-        # Importar dados do Excel se existir
-        if os.path.exists(app.config['REGISTROS_EXCEL']):
-            success = db_manager.import_from_excel(app.config['REGISTROS_EXCEL'])
-            if success:
-                count = db_manager.get_record_count()
-                return jsonify({
-                    'success': True,
-                    'message': f'Banco de dados inicializado com {count} registros'
-                })
-        return jsonify({
-            'success': False,
-            'message': 'Arquivo de registros não encontrado'
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Erro: {str(e)}'
-        })
 
 # Configurar timezone padrão
 app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
 
-# Garantir que a pasta data existe e tem permissões
-data_dir = os.path.join(BASE_DIR, 'data')
-os.makedirs(data_dir, exist_ok=True)
-os.chmod(data_dir, 0o777)  # Permissões amplas (ajuste conforme necessidade de segurança)
-
-# Importação do módulo de validação
-from validacao_nfe import processar_validacao
-
-# Configuração de caminhos usando pathlib (garante funcionamento em qualquer SO)
-app.config['UPLOAD_FOLDER'] = BASE_DIR / 'uploads'
-app.config['DATABASE_FOLDER'] = BASE_DIR / 'data'
-app.config['BASE_NOTAS'] = BASE_DIR / 'data' / 'Base_de_notas.xlsx'
-app.config['REGISTROS_CSV'] = BASE_DIR / 'data' / 'registros.csv'
-app.config['REGISTROS_EXCEL'] = BASE_DIR / 'data' / 'registros.xlsx'
-
-# Garantir que os diretórios existam (cria se não existirem)
+# Garantir que os diretórios existam
 app.config['UPLOAD_FOLDER'].mkdir(exist_ok=True)
 app.config['DATABASE_FOLDER'].mkdir(exist_ok=True)
 
-# VERIFICAÇÃO CRUCIAL DO ARQUIVO (adicionado)
+# Inicializa o gerenciador de banco de dados
+db_manager = DatabaseManager(app)
+
+# VERIFICAÇÃO DO ARQUIVO DE NOTAS
 print("\n" + "="*50)
 print(f"📂 Diretório base: {BASE_DIR}")
 print(f"📝 Arquivo de notas: {app.config['BASE_NOTAS']}")
 print(f"🔍 Arquivo existe? {app.config['BASE_NOTAS'].exists()}")
+print(f"🗄️ Banco de dados: {os.getenv('DATABASE_URL', 'SQLite local')}")
 print("="*50 + "\n")
 
-# Rotas existentes (mantenha todas as suas rotas como estão)
+# Importação do módulo de validação
+from validacao_nfe import processar_validacao
+
 @app.route('/')
 def index():
     """Rota principal que renderiza a página inicial."""
@@ -103,6 +74,7 @@ def verificar():
         nfe = request.form.get('nfe', '').strip()
         pedido = request.form.get('pedido', '').strip()
         data_recebimento_str = request.form.get('data_recebimento', '').strip()
+        
         # Converter para datetime SEM timezone primeiro
         data_naive = datetime.strptime(data_recebimento_str, '%Y-%m-%d')
         # Adicionar timezone (Brasília)
@@ -117,13 +89,18 @@ def verificar():
             app.config['BASE_NOTAS']
         )
         
-        # Se a validação for bem-sucedida, salvar o registro no SQLite
-        if resultado['valido']:
+        # Se a validação for bem-sucedida, salvar o registro no banco
+        if resultado.get('valido', False):
             # Adicionar timestamp ao registro
             resultado['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            db_manager.save_verification(resultado)
             
-            return jsonify(resultado)
+            # Salva usando o novo gerenciador
+            success = db_manager.save_verification(resultado)
+            
+            if not success:
+                resultado['mensagem'] += ' (Aviso: Erro ao salvar no banco de dados)'
+            
+        return jsonify(resultado)
     
     except Exception as e:
         return jsonify({
@@ -133,11 +110,12 @@ def verificar():
 
 @app.route('/download/registros', methods=['GET'])
 def download_registros():
+    """Baixa os registros em formato Excel."""
     try:
         # Exportar para Excel temporário
         temp_excel = app.config['DATABASE_FOLDER'] / 'registros_exportados.xlsx'
         
-        # Exporta os dados
+        # Exporta os dados usando o novo gerenciador
         if db_manager.export_to_excel(str(temp_excel)):
             return send_file(
                 str(temp_excel),
@@ -157,23 +135,53 @@ def download_registros():
             'mensagem': f'Erro ao baixar o arquivo: {str(e)}'
         })
 
-# Adicione esta rota para verificação
 @app.route('/check-db')
 def check_db():
-    """Rota para verificar o status do banco de dados"""
+    """Rota para verificar o status do banco de dados."""
     try:
-        count = db_manager.get_record_count()
+        integrity = db_manager.validate_data_integrity()
+        
         return jsonify({
-            'total_registros': count,
-            'database_path': str(app.config['REGISTROS_DB']),
-            'status': 'OK'
+            'total_registros': integrity['total_registros'],
+            'database_type': integrity['database_type'],
+            'conectividade': integrity['conectividade'],
+            'registros_invalidos': integrity['registros_invalidos'],
+            'problemas': integrity['problemas'],
+            'database_url': os.getenv('DATABASE_URL', 'SQLite local'),
+            'status': 'OK' if integrity['conectividade'] == 'OK' else 'ERROR'
         })
+        
     except Exception as e:
         return jsonify({
             'error': str(e),
             'status': 'ERROR'
         })
-        
+
+@app.route('/init-db')
+def init_db():
+    """Rota para inicializar/verificar o banco de dados."""
+    try:
+        with app.app_context():
+            # Força criação das tabelas
+            db.create_all()
+            
+            # Verifica integridade
+            integrity = db_manager.validate_data_integrity()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Banco de dados inicializado/verificado',
+                'total_registros': integrity['total_registros'],
+                'database_type': integrity['database_type'],
+                'conectividade': integrity['conectividade']
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao inicializar banco: {str(e)}'
+        })
+
 @app.route('/atualizar-base', methods=['POST'])
 def atualizar_base():
     """
@@ -223,16 +231,76 @@ def atualizar_base():
             'mensagem': f'Erro ao atualizar a base de dados: {str(e)}'
         })
 
-# Adicionar rota para página de administração
 @app.route('/admin')
 def admin():
     """Rota para a página de administração."""
     return render_template('admin.html')
 
+@app.route('/api/registros')
+def api_registros():
+    """API para listar todos os registros."""
+    try:
+        registros = db_manager.get_all_records()
+        return jsonify({
+            'success': True,
+            'data': registros,
+            'total': len(registros)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+# Comando CLI para migrações
+@app.cli.command()
+def init_db_cli():
+    """Inicializa o banco de dados via CLI."""
+    try:
+        db.create_all()
+        print("✅ Banco de dados inicializado com sucesso!")
+        
+        integrity = db_manager.validate_data_integrity()
+        print(f"📊 Total de registros: {integrity['total_registros']}")
+        print(f"🗄️ Tipo do banco: {integrity['database_type']}")
+        
+    except Exception as e:
+        print(f"❌ Erro ao inicializar banco: {e}")
+
+@app.cli.command()
+def migrate_legacy():
+    """Migra dados legados via CLI."""
+    try:
+        db_manager._migrate_legacy_data()
+        print("✅ Migração de dados legados concluída!")
+    except Exception as e:
+        print(f"❌ Erro na migração: {e}")
+
 if __name__ == '__main__':
     # DEBUG EXTRA - Mostra estrutura de arquivos
     print("\nESTRUTURA DE ARQUIVOS:")
     for root, dirs, files in os.walk(BASE_DIR):
-        print(f"{root}: {files}")
+        level = root.replace(str(BASE_DIR), '').count(os.sep)
+        indent = ' ' * 2 * level
+        print(f"{indent}{os.path.basename(root)}/")
+        subindent = ' ' * 2 * (level + 1)
+        for file in files[:5]:  # Limita a 5 arquivos por diretório
+            print(f"{subindent}{file}")
+        if len(files) > 5:
+            print(f"{subindent}... e mais {len(files) - 5} arquivos")
+    
+    # Verifica conectividade do banco
+    with app.app_context():
+        try:
+            integrity = db_manager.validate_data_integrity()
+            print(f"\n🗄️ BANCO DE DADOS:")
+            print(f"   Tipo: {integrity['database_type']}")
+            print(f"   Conectividade: {integrity['conectividade']}")
+            print(f"   Registros: {integrity['total_registros']}")
+            if integrity['problemas']:
+                print(f"   Problemas: {', '.join(integrity['problemas'])}")
+        except Exception as e:
+            print(f"\n❌ ERRO NO BANCO: {e}")
     
     app.run(host='0.0.0.0', port=5000, debug=True)
+
