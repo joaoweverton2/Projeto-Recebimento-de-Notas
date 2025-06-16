@@ -18,6 +18,12 @@ pip install -r requirements.txt
 echo "Executando migração de dados iniciais..."
 python migrate_data.py
 
+# Adicionar logs para verificar se os arquivos estão presentes
+echo "Verificando estrutura de arquivos..."
+ls -la
+echo "Verificando pasta data..."
+ls -la data/
+
 echo "--- Script de build concluído ---"
 
 

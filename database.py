@@ -226,8 +226,14 @@ class DatabaseManager:
         """Inicializa o banco de dados e migra dados legados se necessário."""
         try:
             if not self._tables_exist():
+                logger.info("Tabelas não existem, criando e migrando dados.")
                 db.create_all()
-                logger.info("Tabelas criadas com sucesso")
+                logger.info("Tabelas criadas com sucesso.")
+                self._migrate_legacy_data()
+            else:
+                logger.info("Tabelas já existem, verificando migração de dados legados.")
+                # Mesmo que as tabelas existam, podemos querer garantir que a migração de dados legados seja verificada
+                # Isso é útil para deploys onde o banco pode estar vazio mas as tabelas já foram criadas por uma migração anterior
                 self._migrate_legacy_data()
         except exc.SQLAlchemyError as e:
             logger.error(f"Falha ao inicializar banco de dados: {str(e)}")
@@ -242,28 +248,28 @@ class DatabaseManager:
         """Migra dados de arquivos Excel legados para o banco de dados."""
         # Verifica se já existem dados no banco
         if RegistroNF.query.limit(1).first() is not None:
-            logger.info("Banco já contém dados, pulando migração")
+            logger.info("Banco já contém dados, pulando migração de dados legados.")
             return 0
         
-        # Força a migração mesmo se o banco estiver vazio
+        logger.info("Banco de dados vazio ou sem registros, tentando migrar dados legados.")
         legacy_path = self._find_legacy_file()
         if not legacy_path:
-            logger.warning("Nenhum arquivo legado encontrado para migração")
+            logger.warning("Nenhum arquivo legado (registros.xlsx) encontrado para migração. Verifique o caminho.")
             return 0
         
         try:
             logger.info(f"Iniciando migração de dados do arquivo: {legacy_path}")
             df = pd.read_excel(legacy_path, engine='openpyxl')
-            logger.info(f"Arquivo carregado com {len(df)} registros")
+            logger.info(f"Arquivo carregado com {len(df)} registros antes da remoção de duplicatas.")
             
             df = self._remove_duplicates(df)
-            logger.info(f"Após remoção de duplicatas: {len(df)} registros")
+            logger.info(f"Após remoção de duplicatas: {len(df)} registros restantes.")
             
             imported_count = self._import_dataframe(df)
-            logger.info(f"Migração concluída: {imported_count} registros importados")
+            logger.info(f"Migração concluída: {imported_count} registros importados com sucesso.")
             return imported_count
         except Exception as e:
-            logger.error(f"Falha na migração de dados legados: {str(e)}")
+            logger.error(f"Falha na migração de dados legados do arquivo {legacy_path}: {str(e)}")
             return 0
     
     def _remove_duplicates(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -298,30 +304,43 @@ class DatabaseManager:
             Path(self.app.instance_path) / 'data' / 'registros.xlsx'
         ]
         
-        for path in possible_locations:
+        logger.info(f"Procurando arquivo legado em {len(possible_locations)} locais possíveis:")
+        for i, path in enumerate(possible_locations, 1):
+            logger.info(f"  {i}. {path} - Existe: {path.exists()}")
             if path.exists():
-                logger.info(f"Arquivo legado encontrado em: {path}")
+                logger.info(f"✅ Arquivo legado encontrado em: {path}")
                 return path
         
-        logger.warning("Nenhum arquivo legado encontrado nos caminhos verificados")
+        logger.warning("❌ Nenhum arquivo legado encontrado nos caminhos verificados")
         return None
     
     def _import_dataframe(self, df: pd.DataFrame) -> int:
         """Importa dados de um DataFrame para o banco de dados com tratamento de erros."""
         required_cols = ['uf', 'nfe', 'pedido', 'data_recebimento']
         if not all(col in df.columns for col in required_cols):
-            logger.error("DataFrame não contém colunas obrigatórias")
+            logger.error(f"DataFrame não contém colunas obrigatórias. Colunas encontradas: {df.columns.tolist()}")
             return 0
         
+        logger.info("Iniciando pré-processamento do DataFrame...")
         df = self._preprocess_dataframe(df)
+        logger.info(f"DataFrame pré-processado com {len(df)} registros válidos.")
+        
         existing_pairs = self._get_existing_pairs()
+        logger.info(f"Encontrados {len(existing_pairs)} pares (UF, NFe) já existentes no banco.")
+        
         imported_count = 0
         batch_size = 50
+        total_batches = (len(df) + batch_size - 1) // batch_size
+        
+        logger.info(f"Iniciando importação em {total_batches} lotes de até {batch_size} registros cada.")
         
         for i in range(0, len(df), batch_size):
             batch = df.iloc[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            logger.info(f"Processando lote {batch_num}/{total_batches} ({len(batch)} registros)...")
+            
             try:
-                for _, row in batch.iterrows():
+                for idx, row in batch.iterrows():
                     uf = str(row['uf'])
                     nfe = int(row['nfe'])
                     
@@ -340,11 +359,12 @@ class DatabaseManager:
                         continue
                 
                 db.session.commit()
+                logger.info(f"Lote {batch_num} processado com sucesso.")
             except Exception as e:
                 db.session.rollback()
-                logger.error(f"Erro no lote {i//batch_size}: {str(e)}")
+                logger.error(f"Erro no lote {batch_num}: {str(e)}")
         
-        logger.info(f"Dados migrados com sucesso: {imported_count}/{len(df)} registros")
+        logger.info(f"Importação concluída: {imported_count}/{len(df)} registros importados com sucesso.")
         return imported_count
     
     def _get_existing_pairs(self) -> set:
