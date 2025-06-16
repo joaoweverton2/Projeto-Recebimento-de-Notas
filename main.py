@@ -41,12 +41,28 @@ app.config['DATABASE_FOLDER'].mkdir(exist_ok=True)
 # Inicializa o gerenciador de banco de dados
 db_manager = DatabaseManager(app)
 
-# VERIFICAÇÃO DO ARQUIVO DE NOTAS
+# VERIFICAÇÃO DO ARQUIVO DE NOTAS E MIGRAÇÃO FORÇADA
 print("\n" + "="*50)
 print(f"📂 Diretório base: {BASE_DIR}")
 print(f"📝 Arquivo de notas: {app.config['BASE_NOTAS']}")
 print(f"🔍 Arquivo existe? {app.config['BASE_NOTAS'].exists()}")
 print(f"🗄️ Banco de dados: {os.getenv('DATABASE_URL', 'SQLite local')}")
+
+# Verifica se há dados no banco e força migração se necessário
+with app.app_context():
+    try:
+        count = RegistroNF.query.count()
+        print(f"📊 Registros no banco: {count}")
+        
+        if count == 0:
+            print("🔄 Banco vazio, tentando migração automática...")
+            imported = db_manager._migrate_legacy_data()
+            print(f"✅ Migração concluída: {imported} registros importados")
+        else:
+            print("✅ Banco já contém dados")
+    except Exception as e:
+        print(f"⚠️ Erro na verificação/migração: {str(e)}")
+
 print("="*50 + "\n")
 
 # Importação do módulo de validação
