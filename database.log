@@ -1,0 +1,65 @@
+2025-06-15 20:15:25,674 - WARNING - DATABASE_URL não encontrada, usando SQLite local
+2025-06-15 20:15:25,688 - INFO - Tabelas criadas com sucesso
+2025-06-15 20:15:25,692 - INFO - Arquivo legado encontrado em: /home/ubuntu/projeto_recebimento_notas/Projeto-Recebimento-de-Notas/data/registros.xlsx
+2025-06-15 20:15:25,692 - INFO - Iniciando migração de dados do arquivo: /home/ubuntu/projeto_recebimento_notas/Projeto-Recebimento-de-Notas/data/registros.xlsx
+2025-06-15 20:15:25,812 - INFO - Arquivo carregado com 87 registros
+2025-06-15 20:15:25,815 - WARNING - Removendo 39 registros duplicados do arquivo
+2025-06-15 20:15:25,816 - INFO - Após remoção de duplicatas: 48 registros
+2025-06-15 20:15:25,819 - WARNING - Formato de data não reconhecido: 2025-05-27 00:00:00. Usando data atual.
+2025-06-15 20:15:25,820 - WARNING - Formato de data não reconhecido: 2025-05-26 00:00:00. Usando data atual.
+2025-06-15 20:15:25,820 - WARNING - Formato de data não reconhecido: 2025-05-27 00:00:00. Usando data atual.
+2025-06-15 20:15:25,820 - WARNING - Formato de data não reconhecido: 2025-05-21 00:00:00. Usando data atual.
+2025-06-15 20:15:25,820 - WARNING - Formato de data não reconhecido: 2025-05-26 00:00:00. Usando data atual.
+2025-06-15 20:15:25,820 - WARNING - Formato de data não reconhecido: 2025-05-26 00:00:00. Usando data atual.
+2025-06-15 20:15:25,820 - WARNING - Formato de data não reconhecido: 2025-05-26 00:00:00. Usando data atual.
+2025-06-15 20:15:25,820 - WARNING - Formato de data não reconhecido: 2025-05-28 00:00:00. Usando data atual.
+2025-06-15 20:15:25,820 - WARNING - Formato de data não reconhecido: 2025-05-27 00:00:00. Usando data atual.
+2025-06-15 20:15:25,821 - WARNING - Formato de data não reconhecido: 2025-05-28 00:00:00. Usando data atual.
+2025-06-15 20:15:25,821 - WARNING - Formato de data não reconhecido: 2025-05-20 00:00:00. Usando data atual.
+2025-06-15 20:15:25,821 - WARNING - Formato de data não reconhecido: 2025-06-03 00:00:00. Usando data atual.
+2025-06-15 20:15:25,821 - WARNING - Formato de data não reconhecido: 2025-06-02 00:00:00. Usando data atual.
+2025-06-15 20:15:25,821 - WARNING - Formato de data não reconhecido: 2025-06-02 00:00:00. Usando data atual.
+2025-06-15 20:15:25,821 - WARNING - Formato de data não reconhecido: 2025-06-03 00:00:00. Usando data atual.
+2025-06-15 20:15:25,821 - WARNING - Formato de data não reconhecido: 2025-06-03 00:00:00. Usando data atual.
+2025-06-15 20:15:25,821 - WARNING - Formato de data não reconhecido: 2025-06-04 00:00:00. Usando data atual.
+2025-06-15 20:15:25,822 - WARNING - Formato de data não reconhecido: 2025-06-02 00:00:00. Usando data atual.
+2025-06-15 20:15:25,822 - WARNING - Formato de data não reconhecido: 2025-06-02 00:00:00. Usando data atual.
+2025-06-15 20:15:25,822 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,822 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,822 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,822 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,822 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,822 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,822 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,823 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,823 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,823 - WARNING - Formato de data não reconhecido: 2025-06-04 00:00:00. Usando data atual.
+2025-06-15 20:15:25,823 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,823 - WARNING - Formato de data não reconhecido: 2025-06-06 00:00:00. Usando data atual.
+2025-06-15 20:15:25,823 - WARNING - Formato de data não reconhecido: 2025-06-09 00:00:00. Usando data atual.
+2025-06-15 20:15:25,823 - WARNING - Formato de data não reconhecido: 2025-06-06 00:00:00. Usando data atual.
+2025-06-15 20:15:25,823 - WARNING - Formato de data não reconhecido: 2025-06-06 00:00:00. Usando data atual.
+2025-06-15 20:15:25,824 - WARNING - Formato de data não reconhecido: 2025-06-06 00:00:00. Usando data atual.
+2025-06-15 20:15:25,824 - WARNING - Formato de data não reconhecido: 2025-06-06 00:00:00. Usando data atual.
+2025-06-15 20:15:25,824 - WARNING - Formato de data não reconhecido: 2025-06-03 00:00:00. Usando data atual.
+2025-06-15 20:15:25,824 - WARNING - Formato de data não reconhecido: 2025-06-05 00:00:00. Usando data atual.
+2025-06-15 20:15:25,824 - WARNING - Formato de data não reconhecido: 2025-06-09 00:00:00. Usando data atual.
+2025-06-15 20:15:25,824 - WARNING - Formato de data não reconhecido: 2025-06-11 00:00:00. Usando data atual.
+2025-06-15 20:15:25,824 - WARNING - Formato de data não reconhecido: 2025-06-11 00:00:00. Usando data atual.
+2025-06-15 20:15:25,824 - WARNING - Formato de data não reconhecido: 2025-06-10 00:00:00. Usando data atual.
+2025-06-15 20:15:25,824 - WARNING - Formato de data não reconhecido: 2025-06-10 00:00:00. Usando data atual.
+2025-06-15 20:15:25,825 - WARNING - Formato de data não reconhecido: 2025-06-10 00:00:00. Usando data atual.
+2025-06-15 20:15:25,825 - WARNING - Formato de data não reconhecido: 2025-06-10 00:00:00. Usando data atual.
+2025-06-15 20:15:25,825 - WARNING - Formato de data não reconhecido: 2025-06-13 00:00:00. Usando data atual.
+2025-06-15 20:15:25,825 - WARNING - Formato de data não reconhecido: 2025-06-13 00:00:00. Usando data atual.
+2025-06-15 20:15:25,825 - WARNING - Formato de data não reconhecido: 2025-06-13 00:00:00. Usando data atual.
+2025-06-15 20:15:25,838 - INFO - Dados migrados com sucesso: 48/48 registros
+2025-06-15 20:15:25,838 - INFO - Migração concluída: 48 registros importados
+2025-06-15 20:15:25,839 - INFO - Tabelas criadas/verificadas
+2025-06-15 20:15:25,842 - INFO - Registros existentes no banco: 48
+2025-06-15 20:15:25,842 - INFO - Banco já contém dados, migração não necessária
+2025-06-15 20:15:48,827 - WARNING - DATABASE_URL não encontrada, usando SQLite local
+2025-06-15 20:15:48,838 - INFO - Tabelas criadas/verificadas
+2025-06-15 20:15:48,844 - INFO - Registros existentes no banco: 48
+2025-06-15 20:15:48,844 - INFO - Banco já contém dados, migração não necessária
+2025-06-15 20:15:56,653 - WARNING - DATABASE_URL não encontrada, usando SQLite local

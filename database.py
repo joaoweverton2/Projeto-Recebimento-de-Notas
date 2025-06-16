@@ -125,6 +125,10 @@ class DatabaseManager:
         if 't' in date_str:
             date_str = date_str.split('t')[0]
         
+        # Remove timestamp se existir (formato: 2025-05-26 00:00:00)
+        if ' ' in date_str and ':' in date_str:
+            date_str = date_str.split(' ')[0]
+        
         # Tenta parse de datas com meses em português (ex: 2024/fevereiro)
         mes_pt_match = re.match(r'(\d{4})[/-]([a-zç]+)', date_str)
         if mes_pt_match:
@@ -236,19 +240,28 @@ class DatabaseManager:
     
     def _migrate_legacy_data(self) -> int:
         """Migra dados de arquivos Excel legados para o banco de dados."""
+        # Verifica se já existem dados no banco
         if RegistroNF.query.limit(1).first() is not None:
             logger.info("Banco já contém dados, pulando migração")
             return 0
         
+        # Força a migração mesmo se o banco estiver vazio
         legacy_path = self._find_legacy_file()
         if not legacy_path:
-            logger.info("Nenhum arquivo legado encontrado para migração")
+            logger.warning("Nenhum arquivo legado encontrado para migração")
             return 0
         
         try:
+            logger.info(f"Iniciando migração de dados do arquivo: {legacy_path}")
             df = pd.read_excel(legacy_path, engine='openpyxl')
+            logger.info(f"Arquivo carregado com {len(df)} registros")
+            
             df = self._remove_duplicates(df)
-            return self._import_dataframe(df)
+            logger.info(f"Após remoção de duplicatas: {len(df)} registros")
+            
+            imported_count = self._import_dataframe(df)
+            logger.info(f"Migração concluída: {imported_count} registros importados")
+            return imported_count
         except Exception as e:
             logger.error(f"Falha na migração de dados legados: {str(e)}")
             return 0
@@ -271,15 +284,26 @@ class DatabaseManager:
     
     def _find_legacy_file(self) -> Optional[Path]:
         """Procura por arquivos legados em locais conhecidos."""
+        # Primeiro, tenta encontrar o arquivo baseado no diretório do projeto
+        base_dir = Path(__file__).parent.absolute()
+        
         possible_locations = [
+            # Caminhos relativos ao arquivo atual (database.py)
+            base_dir / 'data' / 'registros.xlsx',
+            base_dir / 'data' / 'registros_importados.xlsx',
+            # Caminhos relativos tradicionais (para compatibilidade)
             Path('data/registros.xlsx'),
             Path('data/registros_importados.xlsx'),
+            # Caminho do instance_path do Flask
             Path(self.app.instance_path) / 'data' / 'registros.xlsx'
         ]
         
         for path in possible_locations:
             if path.exists():
+                logger.info(f"Arquivo legado encontrado em: {path}")
                 return path
+        
+        logger.warning("Nenhum arquivo legado encontrado nos caminhos verificados")
         return None
     
     def _import_dataframe(self, df: pd.DataFrame) -> int:
