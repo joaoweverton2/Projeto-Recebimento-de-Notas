@@ -5,6 +5,9 @@ set -e
 
 echo "🚀 === INICIANDO BUILD PARA POSTGRESQL ==="
 
+# Definir variável de ambiente Flask
+export FLASK_APP=main.py
+
 # Instalar dependências
 echo "📦 Instalando dependências..."
 pip install -r requirements.txt

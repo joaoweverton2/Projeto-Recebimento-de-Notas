@@ -29,8 +29,8 @@ def force_migration():
     # Configuração do banco PostgreSQL
     database_url = os.getenv('DATABASE_URL')
     if not database_url:
-        print("❌ DATABASE_URL não encontrada! Para PostgreSQL, esta variável é obrigatória.")
-        return
+        print("⚠️ DATABASE_URL não encontrada! Usando SQLite para teste local.")
+        database_url = "sqlite:///test_migration.db"
     
     # Corrige URL do PostgreSQL se necessário
     if database_url.startswith('postgres://'):
@@ -39,7 +39,10 @@ def force_migration():
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
-    print(f"🐘 Conectando ao PostgreSQL...")
+    if 'postgresql' in database_url:
+        print(f"🐘 Conectando ao PostgreSQL...")
+    else:
+        print(f"🗄️ Conectando ao SQLite local...")
     print(f"🔗 URL: {database_url[:50]}...")
     
     # Inicializa apenas o SQLAlchemy, sem o DatabaseManager para evitar loops
