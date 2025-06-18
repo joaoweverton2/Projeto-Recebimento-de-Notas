@@ -430,6 +430,12 @@ class DatabaseManager:
     def criar_registro(self, data: RegistroNFInput) -> Optional[RegistroNF]:
         """Cria um novo registro de nota fiscal no banco de dados."""
         try:
+            # Verifica se o registro já existe
+            existing = self.obter_registro_por_nfe(data['uf'], data['nfe'])
+            if existing:
+                logger.warning(f"Registro já existe: {data['uf']}-{data['nfe']}")
+                return existing
+            
             registro = RegistroNF(
                 uf=data['uf'].upper()[:6],
                 nfe=data['nfe'],
@@ -445,10 +451,12 @@ class DatabaseManager:
             db.session.commit()
             logger.info(f"Registro criado: {registro}")
             return registro
+        
         except exc.IntegrityError:
             db.session.rollback()
             logger.warning(f"Registro já existe: {data['uf']}-{data['nfe']}")
-            return None
+            return self.obter_registro_por_nfe(data['uf'], data['nfe'])
+        
         except Exception as e:
             db.session.rollback()
             logger.error(f"Falha ao criar registro: {str(e)}")
@@ -529,14 +537,15 @@ class DatabaseManager:
     def exportar_para_excel(self, filepath: str) -> bool:
         """Exporta todos os registros para um arquivo Excel."""
         try:
-            registros = self.listar_registros()
-            data = [r.to_dict() for r in registros]
-            
-            df = pd.DataFrame(data)
-            df.to_excel(filepath, index=False, engine='openpyxl')
-            
-            logger.info(f"Dados exportados para {filepath}")
-            return True
+            with self.app.app_context():
+                registros = self.listar_registros()
+                data = [r.to_dict() for r in registros]
+                
+                df = pd.DataFrame(data)
+                df.to_excel(filepath, index=False, engine='openpyxl')
+                
+                logger.info(f"Dados exportados para {filepath}")
+                return True
         except Exception as e:
             logger.error(f"Falha ao exportar dados: {str(e)}")
             return False

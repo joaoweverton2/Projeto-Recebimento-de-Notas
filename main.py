@@ -12,6 +12,7 @@ from werkzeug.utils import secure_filename
 from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import text  # Importação adicionada para corrigir o erro
+from database import DatabaseManager, db, migrate, RegistroNF
 
 # Carrega variáveis de ambiente
 load_dotenv()
@@ -33,6 +34,26 @@ app.config['BASE_NOTAS'] = BASE_DIR / 'data' / 'Base_de_notas.xlsx'
 
 # Configurar timezone padrão
 app.config['TIMEZONE'] = pytz.timezone('America/Sao_Paulo')
+
+# Configurações do banco de dados - Aplica SSL apenas para PostgreSQL
+database_url = os.getenv('DATABASE_URL', 'sqlite:///' + str(app.config['DATABASE_FOLDER'] / 'registros.db'))
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+
+# Configurações específicas para PostgreSQL
+if 'postgresql' in database_url or 'postgres' in database_url:
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'connect_args': {
+            'sslmode': 'require'  # Configuração SSL para PostgreSQL
+        },
+        'pool_pre_ping': True,    # Verifica conexões antes de usar
+        'pool_recycle': 300       # Recicla conexões a cada 5 minutos
+    }
+else:
+    # Configurações para SQLite
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300
+    }
 
 # Garantir que os diretórios existam
 app.config['UPLOAD_FOLDER'].mkdir(exist_ok=True)
