@@ -541,58 +541,6 @@ class DatabaseManager:
             logger.error(f"Falha ao exportar dados: {str(e)}")
             return False
 
-# Testes
-if __name__ == "__main__":
-    from flask import Flask
-    
-    print("=== TESTE DO DATABASE MANAGER (TRATAMENTO DE DATAS) ===")
-    
-    app = Flask(__name__)
-    app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-    
-    db_manager = DatabaseManager(app)
-    
-    with app.app_context():
-        # Criar tabelas (isso limpa qualquer dado anterior em banco de memória)
-        db.drop_all()
-        db.create_all()
-        
-        # Teste com diferentes formatos de data
-        test_cases = [
-            {'format': 'YYYY-MM-DD', 'date': '2024-01-15', 'nfe': 1000},
-            {'format': 'YYYY/MM/DD', 'date': '2024/01/16', 'nfe': 1001},
-            {'format': 'YYYY-MM', 'date': '2024-02', 'nfe': 1002},
-            {'format': 'YYYY/MM', 'date': '2024/03', 'nfe': 1003},
-            {'format': 'YYYY/MMMM (pt)', 'date': '2024/abril', 'nfe': 1004},
-            {'format': 'DD/MM/YYYY', 'date': '17/05/2024', 'nfe': 1005},
-            {'format': 'ISO com tempo', 'date': '2024-06-18T12:00:00', 'nfe': 1006},
-        ]
-        
-        for test_case in test_cases:
-            test_data = {
-                'uf': 'SP',  # Mesma UF para todos
-                'nfe': test_case['nfe'],  # NFE único para cada caso
-                'pedido': 2000 + test_case['nfe'],  # Pedido único
-                'data_recebimento': test_case['date'],
-                'valido': True,
-                'mensagem': f'Teste de formato: {test_case["format"]}'
-            }
-            
-            registro = db_manager.criar_registro(test_data)
-            if registro:
-                print(f"✅ {test_case['format']}: {registro.data_recebimento} (UF-NFE: {registro.uf}-{registro.nfe})")
-            else:
-                print(f"❌ Falha com formato {test_case['format']} (possível duplicata)")
-        
-        # Teste adicional para verificar todos os registros foram inseridos
-        registros = db_manager.listar_registros()
-        print(f"\nTotal de registros inseridos: {len(registros)}")
-        for r in registros:
-            print(f"- {r.uf}-{r.nfe} ({r.data_recebimento})")
-    
-    print("\nTeste concluído!")
-
     def remover_registros_teste(self) -> int:
         """Remove registros de teste (NFe 999999 e Pedido 999999) do banco de dados."""
         try:
@@ -611,8 +559,6 @@ if __name__ == "__main__":
             logger.error(f"Falha ao remover registros de teste: {str(e)}")
             print(f"❌ Erro ao remover registros de teste: {e}")
             return 0
-
-
 
     def forcar_migracao_dados(self) -> int:
         """Força a migração de dados da planilha registros.xlsx, mesmo se o banco já tiver dados."""
@@ -674,4 +620,56 @@ if __name__ == "__main__":
             db.session.rollback()
             logger.error(f"Falha na migração forçada: {str(e)}")
             return 0
+
+# Testes
+if __name__ == "__main__":
+    from flask import Flask
+    
+    print("=== TESTE DO DATABASE MANAGER (TRATAMENTO DE DATAS) ===")
+    
+    app = Flask(__name__)
+    app.config['TESTING'] = True
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    
+    db_manager = DatabaseManager(app)
+    
+    with app.app_context():
+        # Criar tabelas (isso limpa qualquer dado anterior em banco de memória)
+        db.drop_all()
+        db.create_all()
+        
+        # Teste com diferentes formatos de data
+        test_cases = [
+            {'format': 'YYYY-MM-DD', 'date': '2024-01-15', 'nfe': 1000},
+            {'format': 'YYYY/MM/DD', 'date': '2024/01/16', 'nfe': 1001},
+            {'format': 'YYYY-MM', 'date': '2024-02', 'nfe': 1002},
+            {'format': 'YYYY/MM', 'date': '2024/03', 'nfe': 1003},
+            {'format': 'YYYY/MMMM (pt)', 'date': '2024/abril', 'nfe': 1004},
+            {'format': 'DD/MM/YYYY', 'date': '17/05/2024', 'nfe': 1005},
+            {'format': 'ISO com tempo', 'date': '2024-06-18T12:00:00', 'nfe': 1006},
+        ]
+        
+        for test_case in test_cases:
+            test_data = {
+                'uf': 'SP',  # Mesma UF para todos
+                'nfe': test_case['nfe'],  # NFE único para cada caso
+                'pedido': 2000 + test_case['nfe'],  # Pedido único
+                'data_recebimento': test_case['date'],
+                'valido': True,
+                'mensagem': f'Teste de formato: {test_case["format"]}'
+            }
+            
+            registro = db_manager.criar_registro(test_data)
+            if registro:
+                print(f"✅ {test_case['format']}: {registro.data_recebimento} (UF-NFE: {registro.uf}-{registro.nfe})")
+            else:
+                print(f"❌ Falha com formato {test_case['format']} (possível duplicata)")
+        
+        # Teste adicional para verificar todos os registros foram inseridos
+        registros = db_manager.listar_registros()
+        print(f"\nTotal de registros inseridos: {len(registros)}")
+        for r in registros:
+            print(f"- {r.uf}-{r.nfe} ({r.data_recebimento})")
+    
+    print("\nTeste concluído!")
 
