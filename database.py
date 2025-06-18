@@ -246,10 +246,20 @@ class DatabaseManager:
     
     def _migrate_legacy_data(self) -> int:
         """Migra dados de arquivos Excel legados para o banco de dados."""
-        # Verifica se já existem dados no banco
-        if RegistroNF.query.limit(1).first() is not None:
-            logger.info("Banco já contém dados, pulando migração de dados legados.")
-            return 0
+        # Para PostgreSQL, sempre verificamos se precisamos migrar dados
+        # mesmo que as tabelas já existam, pois o banco é persistente
+        
+        # Primeiro, vamos verificar se já existem dados
+        try:
+            count = RegistroNF.query.count()
+            logger.info(f"Contagem atual de registros no banco: {count}")
+            
+            if count > 0:
+                logger.info("Banco já contém dados, pulando migração de dados legados.")
+                return 0
+        except Exception as e:
+            logger.error(f"Erro ao verificar contagem de registros: {str(e)}")
+            # Se não conseguimos verificar, tentamos migrar mesmo assim
         
         logger.info("Banco de dados vazio ou sem registros, tentando migrar dados legados.")
         legacy_path = self._find_legacy_file()

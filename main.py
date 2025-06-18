@@ -51,6 +51,14 @@ print(f"🗄️ Banco de dados: {os.getenv('DATABASE_URL', 'SQLite local')}")
 # Verifica se há dados no banco e força migração se necessário
 with app.app_context():
     try:
+        # Para PostgreSQL, verificamos a conexão primeiro
+        database_url = os.getenv('DATABASE_URL', 'SQLite local')
+        if 'postgresql' in database_url or 'postgres' in database_url:
+            print("🐘 Usando PostgreSQL")
+        else:
+            print("🗄️ Usando SQLite local")
+            
+        # Tenta contar registros
         count = RegistroNF.query.count()
         print(f"📊 Registros no banco: {count}")
         
@@ -58,10 +66,29 @@ with app.app_context():
             print("🔄 Banco vazio, tentando migração automática...")
             imported = db_manager._migrate_legacy_data()
             print(f"✅ Migração concluída: {imported} registros importados")
+            
+            # Verifica novamente após a migração
+            final_count = RegistroNF.query.count()
+            print(f"📊 Total final de registros: {final_count}")
         else:
             print("✅ Banco já contém dados")
+            
     except Exception as e:
-        print(f"⚠️ Erro na verificação/migração: {str(e)}")
+        print(f"⚠️ Erro na verificação inicial: {str(e)}")
+        print("🔄 Tentando migração de emergência...")
+        
+        # Em caso de erro, tenta criar tabelas e migrar
+        try:
+            db.create_all()
+            print("✅ Tabelas criadas/verificadas")
+            
+            # Tenta migração direta
+            imported = db_manager._migrate_legacy_data()
+            print(f"✅ Migração de emergência concluída: {imported} registros")
+            
+        except Exception as e2:
+            print(f"❌ Erro na migração de emergência: {str(e2)}")
+            print("💡 Execute manualmente: python migrate_data.py")
 
 print("="*50 + "\n")
 

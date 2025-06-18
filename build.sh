@@ -3,27 +3,37 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-echo "--- Iniciando script de build ---"
+echo "🚀 === INICIANDO BUILD PARA POSTGRESQL ==="
 
 # Instalar dependências
-echo "Instalando dependências..."
+echo "📦 Instalando dependências..."
 pip install -r requirements.txt
 
-# Executar migrações do banco de dados (se aplicável)
-# Render geralmente executa migrações como parte do processo de build ou startup
-# Se você usa Flask-Migrate, pode adicionar aqui:
-# flask db upgrade
+# Para PostgreSQL no Render, as migrações são importantes
+echo "🗄️ Configurando banco de dados..."
+
+# Verifica se existe pasta migrations
+if [ -d "migrations" ]; then
+    echo "📁 Pasta migrations encontrada, aplicando migrações..."
+    flask db upgrade
+else
+    echo "📁 Pasta migrations não encontrada, inicializando..."
+    flask db init
+    flask db migrate -m "Initial migration"
+    flask db upgrade
+fi
 
 # Executar o script de migração de dados iniciais
-echo "Executando migração de dados iniciais..."
+echo "📋 Executando migração de dados iniciais..."
 python migrate_data.py
 
-# Adicionar logs para verificar se os arquivos estão presentes
-echo "Verificando estrutura de arquivos..."
-ls -la
-echo "Verificando pasta data..."
+# Verificar estrutura de arquivos
+echo "📂 Verificando estrutura de arquivos..."
+echo "Arquivos na raiz:"
+ls -la | head -10
+echo ""
+echo "Arquivos na pasta data:"
 ls -la data/
 
-echo "--- Script de build concluído ---"
-
+echo "✅ === BUILD CONCLUÍDO ==="
 
