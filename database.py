@@ -398,6 +398,10 @@ class DatabaseManager:
         df['nfe'] = pd.to_numeric(df['nfe'], errors='coerce').dropna().astype('int64')
         df['pedido'] = pd.to_numeric(df['pedido'], errors='coerce').dropna().astype('int64')
         
+        # Filtrar dados de teste antes da importação
+        df = df[(df['nfe'] != 999999) & (df['pedido'] != 999999)]
+        logger.info(f"Após filtrar dados de teste: {len(df)} registros restantes.")
+        
         # Convert dates using our robust parser
         df['data_recebimento'] = df['data_recebimento'].apply(
             lambda x: self._parse_date(str(x)) if pd.notna(x) else datetime.now().date()
@@ -588,3 +592,86 @@ if __name__ == "__main__":
             print(f"- {r.uf}-{r.nfe} ({r.data_recebimento})")
     
     print("\nTeste concluído!")
+
+    def remover_registros_teste(self) -> int:
+        """Remove registros de teste (NFe 999999 e Pedido 999999) do banco de dados."""
+        try:
+            # Remove registros com NFe 999999
+            deleted_nfe = db.session.query(RegistroNF).filter(RegistroNF.nfe == 999999).delete(synchronize_session=False)
+            # Remove registros com Pedido 999999
+            deleted_pedido = db.session.query(RegistroNF).filter(RegistroNF.pedido == 999999).delete(synchronize_session=False)
+            
+            db.session.commit()
+            total_deleted = deleted_nfe + deleted_pedido
+            logger.info(f"Removidos {total_deleted} registros de teste (NFe 999999: {deleted_nfe}, Pedido 999999: {deleted_pedido}).")
+            print(f"✅ Removidos {total_deleted} registros de teste (NFe 999999: {deleted_nfe}, Pedido 999999: {deleted_pedido}).")
+            return total_deleted
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Falha ao remover registros de teste: {str(e)}")
+            print(f"❌ Erro ao remover registros de teste: {e}")
+            return 0
+
+
+
+    def forcar_migracao_dados(self) -> int:
+        """Força a migração de dados da planilha registros.xlsx, mesmo se o banco já tiver dados."""
+        logger.info("Iniciando migração forçada de dados da planilha registros.xlsx")
+        
+        legacy_path = self._find_legacy_file()
+        if not legacy_path:
+            logger.warning("Arquivo registros.xlsx não encontrado para migração forçada.")
+            return 0
+        
+        try:
+            logger.info(f"Carregando dados do arquivo: {legacy_path}")
+            df = pd.read_excel(legacy_path, engine='openpyxl')
+            logger.info(f"Arquivo carregado com {len(df)} registros.")
+            
+            # Remove duplicatas do arquivo
+            df = self._remove_duplicates(df)
+            logger.info(f"Após remoção de duplicatas no arquivo: {len(df)} registros.")
+            
+            # Pré-processa os dados (inclui filtro de dados de teste)
+            df = self._preprocess_dataframe(df)
+            logger.info(f"Após pré-processamento: {len(df)} registros válidos.")
+            
+            # Obtém registros já existentes no banco
+            existing_pairs = self._get_existing_pairs()
+            logger.info(f"Registros já existentes no banco: {len(existing_pairs)}")
+            
+            # Filtra apenas registros novos
+            new_records = []
+            for idx, row in df.iterrows():
+                uf = str(row['uf'])
+                nfe = int(row['nfe'])
+                
+                if (uf, nfe) not in existing_pairs:
+                    new_records.append(row)
+            
+            logger.info(f"Registros novos a serem importados: {len(new_records)}")
+            
+            if not new_records:
+                logger.info("Nenhum registro novo encontrado para importação.")
+                return 0
+            
+            # Importa apenas os registros novos
+            imported_count = 0
+            for row in new_records:
+                try:
+                    registro = self._create_registro_from_row(row)
+                    db.session.add(registro)
+                    imported_count += 1
+                except Exception as e:
+                    logger.error(f"Erro ao importar registro {row['uf']}-{row['nfe']}: {str(e)}")
+                    continue
+            
+            db.session.commit()
+            logger.info(f"Migração forçada concluída: {imported_count} novos registros importados.")
+            return imported_count
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Falha na migração forçada: {str(e)}")
+            return 0
+

@@ -29,6 +29,7 @@ MESES = {
 def carregar_base_dados(caminho_arquivo: str) -> pd.DataFrame:
     """
     Carrega a base de dados de notas fiscais a partir de um arquivo Excel.
+    Sempre recarrega o arquivo para garantir dados atualizados.
     
     Args:
         caminho_arquivo: Caminho para o arquivo Excel contendo a base de dados.
@@ -37,9 +38,14 @@ def carregar_base_dados(caminho_arquivo: str) -> pd.DataFrame:
         DataFrame contendo os dados das notas fiscais.
     """
     try:
-        return pd.read_excel(caminho_arquivo)
+        # Força o recarregamento do arquivo a cada chamada
+        # Isso garante que mudanças no arquivo sejam refletidas imediatamente
+        print(f"🔄 Carregando base de dados: {caminho_arquivo}")
+        df = pd.read_excel(caminho_arquivo, engine='openpyxl')
+        print(f"📊 Base carregada com {len(df)} registros")
+        return df
     except Exception as e:
-        print(f"Erro ao carregar a base de dados: {e}")
+        print(f"❌ Erro ao carregar a base de dados: {e}")
         return pd.DataFrame()
 
 def extrair_mes_ano_planejamento(data_planejamento: str) -> Tuple[int, int]:
@@ -187,18 +193,23 @@ def processar_validacao(uf: str, nfe: str, pedido: str, data_recebimento: str,
     }
     
     try:
-        # Carrega a base de dados
-        base_dados = carregar_base_dados(caminho_base)
-        if base_dados.empty:
-            resultado['mensagem'] = "Erro ao carregar a base de dados"
-            return resultado
-        
         # Converte nfe e pedido para inteiros para validação
         try:
             nfe_int = int(nfe)
             pedido_int = int(pedido)
         except ValueError:
             resultado['mensagem'] = "NFe e Pedido devem ser números inteiros"
+            return resultado
+        
+        # Filtro para dados de teste - não processa se for 999999
+        if nfe_int == 999999 or pedido_int == 999999:
+            resultado['mensagem'] = "Dados de teste (999999) não são processados"
+            return resultado
+        
+        # Carrega a base de dados
+        base_dados = carregar_base_dados(caminho_base)
+        if base_dados.empty:
+            resultado['mensagem'] = "Erro ao carregar a base de dados"
             return resultado
         
         # Valida a existência da nota fiscal na base

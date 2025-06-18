@@ -1,0 +1,43 @@
+2025-06-18 08:38:56,133 - WARNING - DATABASE_URL não encontrada, usando SQLite local
+2025-06-18 08:38:56,156 - INFO - Tabelas não existem, criando e migrando dados.
+2025-06-18 08:38:56,160 - INFO - Tabelas criadas com sucesso.
+2025-06-18 08:38:56,169 - INFO - Contagem atual de registros no banco: 0
+2025-06-18 08:38:56,169 - INFO - Banco de dados vazio ou sem registros, tentando migrar dados legados.
+2025-06-18 08:38:56,169 - INFO - Procurando arquivo legado em 5 locais possíveis:
+2025-06-18 08:38:56,169 - INFO -   1. /home/ubuntu/project/Projeto-Recebimento-de-Notas/data/registros.xlsx - Existe: True
+2025-06-18 08:38:56,170 - INFO - ✅ Arquivo legado encontrado em: /home/ubuntu/project/Projeto-Recebimento-de-Notas/data/registros.xlsx
+2025-06-18 08:38:56,170 - INFO - Iniciando migração de dados do arquivo: /home/ubuntu/project/Projeto-Recebimento-de-Notas/data/registros.xlsx
+2025-06-18 08:38:56,336 - INFO - Arquivo carregado com 87 registros antes da remoção de duplicatas.
+2025-06-18 08:38:56,341 - WARNING - Removendo 39 registros duplicados do arquivo
+2025-06-18 08:38:56,342 - INFO - Após remoção de duplicatas: 48 registros restantes.
+2025-06-18 08:38:56,342 - INFO - Iniciando pré-processamento do DataFrame...
+2025-06-18 08:38:56,345 - INFO - Após filtrar dados de teste: 48 registros restantes.
+2025-06-18 08:38:56,349 - INFO - DataFrame pré-processado com 48 registros válidos.
+2025-06-18 08:38:56,351 - INFO - Encontrados 0 pares (UF, NFe) já existentes no banco.
+2025-06-18 08:38:56,351 - INFO - Iniciando importação em 1 lotes de até 50 registros cada.
+2025-06-18 08:38:56,351 - INFO - Processando lote 1/1 (48 registros)...
+2025-06-18 08:38:56,365 - INFO - Lote 1 processado com sucesso.
+2025-06-18 08:38:56,365 - INFO - Importação concluída: 48/48 registros importados com sucesso.
+2025-06-18 08:38:56,365 - INFO - Migração concluída: 48 registros importados com sucesso.
+2025-06-18 08:38:56,368 - INFO - Contagem atual de registros no banco: 48
+2025-06-18 08:38:56,368 - INFO - Banco já contém dados, pulando migração de dados legados.
+2025-06-18 08:38:56,385 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://169.254.0.21:5000
+2025-06-18 08:38:56,385 - INFO - [33mPress CTRL+C to quit[0m
+2025-06-18 08:38:56,386 - INFO -  * Restarting with stat
+2025-06-18 08:38:57,337 - WARNING - DATABASE_URL não encontrada, usando SQLite local
+2025-06-18 08:38:57,351 - INFO - Tabelas já existem, verificando migração de dados legados.
+2025-06-18 08:38:57,361 - INFO - Contagem atual de registros no banco: 48
+2025-06-18 08:38:57,361 - INFO - Banco já contém dados, pulando migração de dados legados.
+2025-06-18 08:38:57,364 - INFO - Contagem atual de registros no banco: 48
+2025-06-18 08:38:57,364 - INFO - Banco já contém dados, pulando migração de dados legados.
+2025-06-18 08:38:57,374 - WARNING -  * Debugger is active!
+2025-06-18 08:38:57,374 - INFO -  * Debugger PIN: 780-214-819
+2025-06-18 08:40:54,667 - WARNING - DATABASE_URL não encontrada, usando SQLite local
+2025-06-18 08:40:54,681 - INFO - Tabelas já existem, verificando migração de dados legados.
+2025-06-18 08:40:54,690 - INFO - Contagem atual de registros no banco: 48
+2025-06-18 08:40:54,690 - INFO - Banco já contém dados, pulando migração de dados legados.
+2025-06-18 08:40:54,693 - INFO - Contagem atual de registros no banco: 48
+2025-06-18 08:40:54,693 - INFO - Banco já contém dados, pulando migração de dados legados.

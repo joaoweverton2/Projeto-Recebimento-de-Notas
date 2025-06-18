@@ -73,6 +73,14 @@ with app.app_context():
         else:
             print("✅ Banco já contém dados")
             
+            # Remover dados de teste
+            db_manager.remover_registros_teste()
+            
+            # Forçar migração dos dados da planilha registros.xlsx
+            novos_registros = db_manager.forcar_migracao_dados()
+            if novos_registros > 0:
+                print(f"📥 Importados {novos_registros} novos registros da planilha registros.xlsx")
+            
     except Exception as e:
         print(f"⚠️ Erro na verificação inicial: {str(e)}")
         print("🔄 Tentando migração de emergência...")
@@ -218,12 +226,25 @@ def atualizar_base():
                 'mensagem': 'O arquivo deve ser um Excel (.xlsx ou .xls)'
             })
         
+        # Salva o arquivo Base_de_notas.xlsx
         filename = secure_filename('Base_de_notas.xlsx')
         arquivo.save(app.config['BASE_NOTAS'])
         
+        # Força a atualização do cache/reload da aplicação se necessário
+        # Isso garante que as próximas validações usem o arquivo atualizado
+        print(f"📝 Base de notas atualizada: {app.config['BASE_NOTAS']}")
+        print(f"📊 Arquivo existe: {app.config['BASE_NOTAS'].exists()}")
+        
+        # Verifica se o arquivo foi salvo corretamente
+        if not app.config['BASE_NOTAS'].exists():
+            return jsonify({
+                'sucesso': False,
+                'mensagem': 'Erro ao salvar o arquivo no servidor'
+            })
+        
         return jsonify({
             'sucesso': True,
-            'mensagem': 'Base de dados atualizada com sucesso'
+            'mensagem': 'Base de dados atualizada com sucesso. As próximas validações usarão os novos dados.'
         })
     
     except Exception as e:
