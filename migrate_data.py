@@ -14,7 +14,7 @@ from database import DatabaseManager # Importa o DatabaseManager para usar a con
 # Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
-    format=\'%(asctime)s - %(levelname)s - %(message)s\'
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def force_migration():
     db_manager = DatabaseManager()
     
     try:
-        # Verifica se a planilha \'registros_nf\' existe e está acessível
+        # Verifica se a planilha 'registros_nf' existe e está acessível
         worksheet = db_manager.worksheet
         
         # Obtém o sheet_id diretamente da variável de ambiente para logging
@@ -35,9 +35,9 @@ def force_migration():
         # Define o caminho do arquivo Excel
         # Tenta caminhos diferentes para compatibilidade local e Render
         excel_file_paths = [
-            project_dir / \'data\' / \'Base_de_notas.xlsx\',
-            Path(os.getcwd()) / \'data\' / \'Base_de_notas.xlsx\',
-            Path(\'/\') / \'opt\' / \'render\' / \'project\' / \'src\' / \'data\' / \'Base_de_notas.xlsx\' # Caminho comum no Render
+            project_dir / 'data' / 'Base_de_notas.xlsx',
+            Path(os.getcwd()) / 'data' / 'Base_de_notas.xlsx',
+            Path('/') / 'opt' / 'render' / 'project' / 'src' / 'data' / 'Base_de_notas.xlsx' # Caminho comum no Render
         ]
         
         data_file = None
@@ -53,18 +53,18 @@ def force_migration():
         logger.info(f"📁 Arquivo Excel encontrado: {data_file}")
         
         # Carrega e processa os dados do Excel
-        df = pd.read_excel(data_file, engine=\'openpyxl\')
+        df = pd.read_excel(data_file, engine='openpyxl')
         logger.info(f"📋 Carregados {len(df)} registros do Excel")
         
         # Remove duplicatas com base em UF, NFe e Pedido
-        df = df.drop_duplicates(subset=[\'uf\', \'nfe\', \'pedido\'], keep=\'first\')
+        df = df.drop_duplicates(subset=['uf', 'nfe', 'pedido'], keep='first')
         logger.info(f"📋 Após remoção de duplicatas: {len(df)} registros")
         
         # Lê os dados existentes na planilha do Google Sheets para evitar duplicatas
         existing_data = worksheet.get_all_records()
         existing_keys = set()
         for row in existing_data:
-            key = (str(row.get(\'uf\', \'\')).upper(), str(row.get(\'nfe\', \'\')), str(row.get(\'pedido\', \'\')))
+            key = (str(row.get('uf', '')).upper(), str(row.get('nfe', '')), str(row.get('pedido', '')))
             existing_keys.add(key)
         logger.info(f"📊 {len(existing_keys)} registros existentes no Google Sheets.")
 
@@ -72,9 +72,9 @@ def force_migration():
         for _, row in df.iterrows():
             try:
                 # Prepara os dados para inserção
-                uf = str(row[\'uf\']).upper()
-                nfe = str(row[\'nfe\'])
-                pedido = str(row[\'pedido\'])
+                uf = str(row['uf']).upper()
+                nfe = str(row['nfe'])
+                pedido = str(row['pedido'])
                 
                 # Cria uma chave única para verificar duplicatas
                 current_key = (uf, nfe, pedido)
@@ -84,17 +84,17 @@ def force_migration():
                     continue
 
                 # Formata a data de recebimento
-                data_recebimento = pd.to_datetime(row[\'data_recebimento\']).strftime(\'%d/%m/%Y\')
+                data_recebimento = pd.to_datetime(row['data_recebimento']).strftime('%d/%m/%Y')
 
                 # Formata a data de planejamento, se existir
-                data_planejamento = \'\'
-                if pd.notna(row.get(\'data_planejamento\')):
-                    data_planejamento = pd.to_datetime(row[\'data_planejamento\']).strftime(\'%d/%m/%Y\')
+                data_planejamento = ''
+                if pd.notna(row.get('data_planejamento')):
+                    data_planejamento = pd.to_datetime(row['data_planejamento']).strftime('%d/%m/%Y')
 
                 # Preenche valores padrão para colunas que podem estar faltando
-                valido = \'TRUE\' if row.get(\'valido\', True) else \'FALSE\'
-                decisao = str(row.get(\'decisao\', \'\')) if pd.notna(row.get(\'decisao\')) else \'\'
-                mensagem = str(row.get(\'mensagem\', \'\')) if pd.notna(row.get(\'mensagem\')) else \'\'
+                valido = 'TRUE' if row.get('valido', True) else 'FALSE'
+                decisao = str(row.get('decisao', '')) if pd.notna(row.get('decisao')) else ''
+                mensagem = str(row.get('mensagem', '')) if pd.notna(row.get('mensagem')) else ''
 
                 # Adiciona o registro à planilha
                 worksheet.append_row([
@@ -104,7 +104,7 @@ def force_migration():
                 logger.info(f"✅ Registro importado: UF={uf}, NFe={nfe}, Pedido={pedido}")
                 
             except Exception as e:
-                logger.error(f"⚠️ Erro ao processar registro {row.get(\'nfe\', \'N/A\')}: {e}")
+                logger.error(f"⚠️ Erro ao processar registro {row.get('nfe', 'N/A')}: {e}")
                 continue
         
         logger.info(f"✅ Migração concluída: {imported_count} novos registros importados para o Google Sheets.")
@@ -113,7 +113,7 @@ def force_migration():
         logger.error(f"❌ Erro durante a migração para Google Sheets: {str(e)}")
         raise
 
-if __name__ == \'__main__\':
+if __name__ == '__main__':
     force_migration()
 
 
