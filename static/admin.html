@@ -1,31 +1,100 @@
-<!-- admin.html - Versão reescrita com conexão restabelecida -->
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <!-- Cabeçalho (sem modificações) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Administração - Sistema de Verificação de Notas Fiscais</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        /* Estilos CSS (sem modificações) */
-        .admin-section { margin-bottom: 40px; }
-        .file-input-container { position: relative; margin-bottom: 20px; }
-        /* ... (outros estilos permanecem iguais) ... */
+        .admin-section {
+            margin-bottom: 40px;
+        }
+        
+        .file-input-container {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        
+        .file-input-container input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+            background-color: var(--light-color);
+            border: 2px dashed var(--secondary-color);
+            border-radius: var(--border-radius);
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        
+        .file-input-label:hover {
+            background-color: rgba(52, 152, 219, 0.1);
+        }
+        
+        .file-input-label i {
+            font-size: 2rem;
+            margin-right: 15px;
+            color: var(--secondary-color);
+        }
+        
+        .file-name {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: var(--dark-color);
+        }
+        
+        .notification {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: var(--border-radius);
+            display: none;
+        }
+        
+        .notification.success {
+            background-color: rgba(39, 174, 96, 0.2);
+            color: var(--success-color);
+            border-left: 4px solid var(--success-color);
+        }
+        
+        .notification.error {
+            background-color: rgba(231, 76, 60, 0.2);
+            color: var(--accent-color);
+            border-left: 4px solid var(--accent-color);
+        }
+        
+        .admin-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .admin-actions {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Cabeçalho (sem modificações) -->
         <header>
             <h1>Administração do Sistema</h1>
             <p class="subtitle">Gerencie a base de dados e os registros de verificações</p>
         </header>
 
         <main>
-            <!-- Seção de atualização (sem modificações estruturais) -->
             <section class="admin-section">
                 <div class="card">
                     <h2><i class="fas fa-database"></i> Atualização da Base de Dados</h2>
@@ -55,7 +124,6 @@
                 </div>
             </section>
             
-            <!-- Seção de download (modificada para usar botão com evento) -->
             <section class="admin-section">
                 <div class="card">
                     <h2><i class="fas fa-file-download"></i> Download de Registros</h2>
@@ -72,7 +140,6 @@
                 </div>
             </section>
             
-            <!-- Botão de voltar (sem modificações) -->
             <div class="admin-actions">
                 <a href="/" class="btn secondary">
                     <i class="fas fa-arrow-left"></i> Voltar para o Sistema
@@ -80,24 +147,21 @@
             </div>
         </main>
         
-        <!-- Rodapé (sem modificações) -->
         <footer>
             <p>&copy; 2025 Sistema de Verificação de Notas Fiscais</p>
         </footer>
     </div>
 
-    <!-- Script (modificado para corrigir funcionalidades) -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Elementos (sem modificações)
             const baseFileInput = document.getElementById('baseFile');
             const fileNameDisplay = document.getElementById('fileName');
             const updateBaseBtn = document.getElementById('updateBaseBtn');
             const updateNotification = document.getElementById('updateNotification');
-            const downloadNotification = document.getElementById('downloadNotification');
             const downloadBtn = document.getElementById('downloadBtn');
+            const downloadNotification = document.getElementById('downloadNotification');
             
-            // 1. Atualizar nome do arquivo (sem modificações)
+            // Atualizar nome do arquivo selecionado
             baseFileInput.addEventListener('change', function() {
                 if (this.files.length > 0) {
                     fileNameDisplay.textContent = this.files[0].name;
@@ -108,7 +172,7 @@
                 }
             });
             
-            // 2. Atualizar base de dados (modificado para FormData correto)
+            // Atualizar base de dados
             updateBaseBtn.addEventListener('click', async function() {
                 if (baseFileInput.files.length === 0) {
                     showNotification(updateNotification, 'Selecione um arquivo Excel para atualizar a base de dados.', 'error');
@@ -117,7 +181,7 @@
                 
                 const file = baseFileInput.files[0];
                 
-                if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+                if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) {
                     showNotification(updateNotification, 'O arquivo deve ser um Excel (.xlsx ou .xls)', 'error');
                     return;
                 }
@@ -147,7 +211,7 @@
                 }
             });
             
-            // 3. Download de registros (novo código)
+            // Download de registros
             downloadBtn.addEventListener('click', async function() {
                 try {
                     const response = await fetch('/download-registros');
@@ -160,7 +224,7 @@
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'registros_notas_fiscais.xlsx';
+                    a.download = 'registros_notas_fiscais_' + new Date().toISOString().slice(0,10) + '.xlsx';
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
@@ -173,7 +237,7 @@
                 }
             });
             
-            // Função auxiliar (sem modificações)
+            // Função para mostrar notificação
             function showNotification(element, message, type) {
                 element.textContent = message;
                 element.className = `notification ${type}`;
