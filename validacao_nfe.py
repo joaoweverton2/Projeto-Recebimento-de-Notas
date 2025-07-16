@@ -237,7 +237,7 @@ def processar_validacao(uf: str, nfe: str, pedido: str, data_recebimento: str,
     
     return resultado
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # Exemplo de uso
     import os
     caminho_data = os.path.join(os.path.dirname(__file__), 'data')  # Define caminho_data

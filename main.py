@@ -12,6 +12,8 @@ from werkzeug.utils import secure_filename
 from pathlib import Path
 from dotenv import load_dotenv
 from database import DatabaseManager
+
+# Carrega variáveis de ambiente
 load_dotenv()
 
 # Configurações da aplicação
@@ -30,13 +32,13 @@ app.config["BASE_NOTAS"] = BASE_DIR / "data" / "Base_de_notas.xlsx"
 app.config["TIMEZONE"] = pytz.timezone("America/Sao_Paulo")
 
 # Garantir que os diretórios existam
-app.config["UPLOAD_FOLDER"].mkdir(exist_ok=True)
-app.config["DATABASE_FOLDER"].mkdir(exist_ok=True)
+app.config["UPLOAD_FOLDER"].mkdir(parents=True, exist_ok=True)
+app.config["DATABASE_FOLDER"].mkdir(parents=True, exist_ok=True)
 
 # Inicializa o gerenciador de banco de dados
 db_manager = DatabaseManager(app)
 
-# Importação do módulo de validação
+# Importação do módulo de validação (após inicialização do app)
 from validacao_nfe import processar_validacao
 
 @app.route("/")
@@ -56,19 +58,37 @@ def verificar():
         pedido = request.form.get("pedido", "").strip()
         data_recebimento_str = request.form.get("data_recebimento", "").strip()
         
+        # Validação básica dos campos
+        if not all([uf, nfe, pedido, data_recebimento_str]):
+            return jsonify({
+                "valido": False,
+                "mensagem": "Todos os campos são obrigatórios"
+            })
+        
+        try:
+            nfe = int(nfe)
+            pedido = int(pedido)
+        except ValueError:
+            return jsonify({
+                "valido": False,
+                "mensagem": "NFe e Pedido devem ser números"
+            })
+        
         # Processar a validação
         resultado = processar_validacao(
-            uf, nfe, pedido, 
-            data_recebimento_str,
-            app.config["BASE_NOTAS"]
+            uf=uf, 
+            nfe=nfe, 
+            pedido=pedido, 
+            data_recebimento_str=data_recebimento_str,
+            caminho_base_notas=app.config["BASE_NOTAS"]
         )
         
         # Se a validação for bem-sucedida, salvar o registro no banco
         if resultado.get("valido", False):
             registro_data = {
                 "uf": uf,
-                "nfe": int(nfe),
-                "pedido": int(pedido),
+                "nfe": nfe,
+                "pedido": pedido,
                 "data_recebimento": data_recebimento_str,
                 "valido": resultado["valido"],
                 "data_planejamento": resultado.get("data_planejamento", ""),
@@ -84,10 +104,11 @@ def verificar():
         return jsonify(resultado)
     
     except Exception as e:
+        app.logger.error(f"Erro em /verificar: {str(e)}", exc_info=True)
         return jsonify({
             "valido": False,
             "mensagem": f"Erro durante o processamento: {str(e)}"
-        })
+        }), 500
 
 @app.route("/download/registros", methods=["GET"])
 def download_registros():
@@ -99,19 +120,21 @@ def download_registros():
             return send_file(
                 str(temp_excel),
                 as_attachment=True,
-                download_name="registros_notas_fiscais.xlsx",
+                download_name=f"registros_notas_fiscais_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-        else:
-            return jsonify({
-                "sucesso": False,
-                "mensagem": "Falha ao gerar arquivo Excel"
-            })
+        return jsonify({
+            "sucesso": False,
+            "mensagem": "Falha ao gerar arquivo Excel"
+        }), 500
+        
     except Exception as e:
+        app.logger.error(f"Erro em /download/registros: {str(e)}", exc_info=True)
         return jsonify({
             "sucesso": False,
             "mensagem": f"Erro ao baixar o arquivo: {str(e)}"
-        })
+        }), 500
+
 @app.route("/check-db")
 def check_db():
     """Rota para verificar o status do Google Sheets."""
@@ -127,10 +150,11 @@ def check_db():
         })
         
     except Exception as e:
+        app.logger.error(f"Erro em /check-db: {str(e)}", exc_info=True)
         return jsonify({
             "error": str(e),
             "status": "ERROR"
-        })
+        }), 500
 
 @app.route("/atualizar-base", methods=["POST"])
 def atualizar_base():
@@ -140,7 +164,7 @@ def atualizar_base():
             return jsonify({
                 "sucesso": False,
                 "mensagem": "Nenhum arquivo enviado"
-            })
+            }), 400
         
         arquivo = request.files["arquivo"]
         
@@ -148,29 +172,31 @@ def atualizar_base():
             return jsonify({
                 "sucesso": False,
                 "mensagem": "Nenhum arquivo selecionado"
-            })
+            }), 400
         
-        if not arquivo.filename.endswith((".xlsx", ".xls")):
+        if not arquivo.filename.lower().endswith((".xlsx", ".xls")):
             return jsonify({
                 "sucesso": False,
                 "mensagem": "O arquivo deve ser um Excel (.xlsx ou .xls)"
-            })
+            }), 400
+        
+        # Garante que o diretório existe
+        app.config["DATABASE_FOLDER"].mkdir(parents=True, exist_ok=True)
         
         # Salva o arquivo Base_de_notas.xlsx
         filename = secure_filename("Base_de_notas.xlsx")
         arquivo.save(app.config["BASE_NOTAS"])
         
-        # Força a atualização do cache/reload da aplicação se necessário
-        # Isso garante que as próximas validações usem o arquivo atualizado
-        print(f'📝 Base de notas atualizada: {app.config["BASE_NOTAS"]}')
-        print(f'📊 Arquivo existe: {app.config["BASE_NOTAS"].exists()}')
+        # Log de atualização
+        app.logger.info(f"Base de notas atualizada: {app.config['BASE_NOTAS']}")
+        app.logger.info(f"Tamanho do arquivo: {os.path.getsize(app.config['BASE_NOTAS'])} bytes")
         
         # Verifica se o arquivo foi salvo corretamente
         if not app.config["BASE_NOTAS"].exists():
             return jsonify({
                 "sucesso": False,
                 "mensagem": "Erro ao salvar o arquivo no servidor"
-            })
+            }), 500
         
         return jsonify({
             "sucesso": True,
@@ -178,10 +204,11 @@ def atualizar_base():
         })
     
     except Exception as e:
+        app.logger.error(f"Erro em /atualizar-base: {str(e)}", exc_info=True)
         return jsonify({
             "sucesso": False,
             "mensagem": f"Erro ao atualizar a base de dados: {str(e)}"
-        })
+        }), 500
 
 @app.route("/admin")
 def admin():
@@ -192,20 +219,20 @@ def admin():
 def api_registros():
     """API para listar todos os registros."""
     try:
-
-        registros_dict = db_manager.listar_registros()
+        registros = db_manager.listar_registros()
         return jsonify({
             "success": True,
-            "data": registros_dict,
-            "total": len(registros_dict)
+            "data": registros,
+            "total": len(registros)
         })
     except Exception as e:
+        app.logger.error(f"Erro em /api/registros: {str(e)}", exc_info=True)
         return jsonify({
             "success": False,
             "error": str(e)
-        })
+        }), 500
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)
 
 
