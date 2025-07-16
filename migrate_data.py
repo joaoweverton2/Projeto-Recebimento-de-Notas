@@ -1,21 +1,17 @@
-"""
-Script de migração de dados iniciais - VERSÃO SIMPLIFICADA PARA POSTGRESQL
-Este script força o carregamento dos dados iniciais no primeiro deploy
-"""
 
 import os
 import sys
+import pandas as pd
 from pathlib import Path
+import logging
 
 # Adiciona o diretório do projeto ao path
 project_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(project_dir))
 
-from flask import Flask
-from database import DatabaseManager, db, RegistroNF
-import logging
+from database import DatabaseManager # Importa o DatabaseManager para usar a conexão com o Google Sheets
 
-# Configuração de logging mais simples
+# Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -23,140 +19,98 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def force_migration():
-    """Força a migração de dados iniciais para PostgreSQL."""
-    app = Flask(__name__)
+    logger.info("Iniciando script de migração de dados para Google Sheets.")
+
+    # Inicializa o DatabaseManager
+    db_manager = DatabaseManager()
     
-    # Configuração do banco PostgreSQL
-    database_url = os.getenv('DATABASE_URL')
-    if not database_url:
-        print("⚠️ DATABASE_URL não encontrada! Usando SQLite para teste local.")
-        database_url = "sqlite:///test_migration.db"
-    
-    # Corrige URL do PostgreSQL se necessário
-    if database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
-    if 'postgresql' in database_url:
-        print(f"🐘 Conectando ao PostgreSQL...")
-    else:
-        print(f"🗄️ Conectando ao SQLite local...")
-    print(f"🔗 URL: {database_url[:50]}...")
-    
-    # Inicializa apenas o SQLAlchemy, sem o DatabaseManager para evitar loops
-    db.init_app(app)
-    
-    with app.app_context():
-        try:
-            # Cria as tabelas se não existirem (para casos onde Flask-Migrate falhou)
-            db.create_all()
-            print("✅ Tabelas verificadas/criadas")
-            
-            # Verifica quantos registros existem
-            count = RegistroNF.query.count()
-            print(f"📊 Registros existentes: {count}")
-            
-            if count == 0:
-                print("🔄 Banco vazio, iniciando migração...")
+    try:
+        # Verifica se a planilha 'registros_nf' existe e está acessível
+        worksheet = db_manager.worksheet
+        logger.info(f"Conectado à planilha Google Sheets: {db_manager.sheet_id}, aba: {worksheet.title}")
+
+        # Define o caminho do arquivo Excel
+        # Tenta caminhos diferentes para compatibilidade local e Render
+        excel_file_paths = [
+            project_dir / 'data' / 'Base_de_notas.xlsx',
+            Path(os.getcwd()) / 'data' / 'Base_de_notas.xlsx',
+            Path('/') / 'opt' / 'render' / 'project' / 'src' / 'data' / 'Base_de_notas.xlsx' # Caminho comum no Render
+        ]
+        
+        data_file = None
+        for path in excel_file_paths:
+            if path.exists():
+                data_file = path
+                break
+        
+        if not data_file:
+            logger.error(f"❌ Arquivo Base_de_notas.xlsx não encontrado em nenhum dos caminhos esperados: {excel_file_paths}")
+            return
+        
+        logger.info(f"📁 Arquivo Excel encontrado: {data_file}")
+        
+        # Carrega e processa os dados do Excel
+        df = pd.read_excel(data_file, engine='openpyxl')
+        logger.info(f"📋 Carregados {len(df)} registros do Excel")
+        
+        # Remove duplicatas com base em UF, NFe e Pedido
+        df = df.drop_duplicates(subset=['uf', 'nfe', 'pedido'], keep='first')
+        logger.info(f"📋 Após remoção de duplicatas: {len(df)} registros")
+        
+        # Lê os dados existentes na planilha do Google Sheets para evitar duplicatas
+        existing_data = worksheet.get_all_records()
+        existing_keys = set()
+        for row in existing_data:
+            key = (str(row.get('uf', '')).upper(), str(row.get('nfe', '')), str(row.get('pedido', '')))
+            existing_keys.add(key)
+        logger.info(f"📊 {len(existing_keys)} registros existentes no Google Sheets.")
+
+        imported_count = 0
+        for _, row in df.iterrows():
+            try:
+                # Prepara os dados para inserção
+                uf = str(row['uf']).upper()
+                nfe = str(row['nfe'])
+                pedido = str(row['pedido'])
                 
-                # Procura o arquivo de dados
-                data_file = project_dir / 'data' / 'registros.xlsx'
-                if not data_file.exists():
-                    print(f"❌ Arquivo não encontrado: {data_file}")
-                    return
+                # Cria uma chave única para verificar duplicatas
+                current_key = (uf, nfe, pedido)
                 
-                print(f"📁 Arquivo encontrado: {data_file}")
+                if current_key in existing_keys:
+                    logger.info(f"Registro já existe no Google Sheets, pulando: UF={uf}, NFe={nfe}, Pedido={pedido}")
+                    continue
+
+                # Formata a data de recebimento
+                data_recebimento = pd.to_datetime(row['data_recebimento']).strftime('%d/%m/%Y')
+
+                # Formata a data de planejamento, se existir
+                data_planejamento = ''
+                if pd.notna(row.get('data_planejamento')):
+                    data_planejamento = pd.to_datetime(row['data_planejamento']).strftime('%d/%m/%Y')
+
+                # Preenche valores padrão para colunas que podem estar faltando
+                valido = 'TRUE' if row.get('valido', True) else 'FALSE'
+                decisao = str(row.get('decisao', '')) if pd.notna(row.get('decisao')) else ''
+                mensagem = str(row.get('mensagem', '')) if pd.notna(row.get('mensagem')) else ''
+
+                # Adiciona o registro à planilha
+                worksheet.append_row([
+                    uf, nfe, pedido, data_recebimento, valido, data_planejamento, decisao, mensagem
+                ])
+                imported_count += 1
+                logger.info(f"✅ Registro importado: UF={uf}, NFe={nfe}, Pedido={pedido}")
                 
-                # Carrega e processa os dados
-                import pandas as pd
-                df = pd.read_excel(data_file, engine='openpyxl')
-                print(f"📋 Carregados {len(df)} registros do Excel")
+            except Exception as e:
+                logger.error(f"⚠️ Erro ao processar registro {row.get('nfe', 'N/A')}: {e}")
+                continue
+        
+        logger.info(f"✅ Migração concluída: {imported_count} novos registros importados para o Google Sheets.")
                 
-                # Remove duplicatas
-                df = df.drop_duplicates(subset=['uf', 'nfe'], keep='first')
-                print(f"📋 Após remoção de duplicatas: {len(df)} registros")
-                
-                # Importa os dados
-                imported = 0
-                for _, row in df.iterrows():
-                    try:
-                        # Processa a data de recebimento
-                        data_recebimento = row['data_recebimento']
-                        if isinstance(data_recebimento, str):
-                            # Trata formatos como "2025/MAIO"
-                            if '/' in data_recebimento and any(mes in data_recebimento.upper() for mes in ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO']):
-                                # Converte mês em português para número
-                                meses = {
-                                    'JANEIRO': '01', 'FEVEREIRO': '02', 'MARÇO': '03', 'ABRIL': '04',
-                                    'MAIO': '05', 'JUNHO': '06', 'JULHO': '07', 'AGOSTO': '08',
-                                    'SETEMBRO': '09', 'OUTUBRO': '10', 'NOVEMBRO': '11', 'DEZEMBRO': '12'
-                                }
-                                parts = data_recebimento.split('/')
-                                if len(parts) == 2:
-                                    ano = parts[0]
-                                    mes_nome = parts[1].upper()
-                                    if mes_nome in meses:
-                                        data_recebimento = f"{ano}-{meses[mes_nome]}-01"
-                        
-                        data_recebimento = pd.to_datetime(data_recebimento).date()
-                        
-                        # Processa a data de planejamento
-                        data_planejamento = None
-                        if pd.notna(row.get('data_planejamento')):
-                            try:
-                                data_planejamento_raw = row['data_planejamento']
-                                if isinstance(data_planejamento_raw, str) and '/' in data_planejamento_raw:
-                                    # Mesmo tratamento para data de planejamento
-                                    meses = {
-                                        'JANEIRO': '01', 'FEVEREIRO': '02', 'MARÇO': '03', 'ABRIL': '04',
-                                        'MAIO': '05', 'JUNHO': '06', 'JULHO': '07', 'AGOSTO': '08',
-                                        'SETEMBRO': '09', 'OUTUBRO': '10', 'NOVEMBRO': '11', 'DEZEMBRO': '12'
-                                    }
-                                    parts = data_planejamento_raw.split('/')
-                                    if len(parts) == 2:
-                                        ano = parts[0]
-                                        mes_nome = parts[1].upper()
-                                        if mes_nome in meses:
-                                            data_planejamento_raw = f"{ano}-{meses[mes_nome]}-01"
-                                
-                                data_planejamento = pd.to_datetime(data_planejamento_raw).date()
-                            except:
-                                data_planejamento = None
-                        
-                        registro = RegistroNF(
-                            uf=str(row['uf']).upper()[:6],
-                            nfe=int(row['nfe']),
-                            pedido=int(row['pedido']),
-                            data_recebimento=data_recebimento,
-                            valido=bool(row.get('valido', True)),
-                            data_planejamento=data_planejamento,
-                            decisao=str(row.get('decisao', '')) if pd.notna(row.get('decisao')) else None,
-                            mensagem=str(row.get('mensagem', '')) if pd.notna(row.get('mensagem')) else None
-                        )
-                        db.session.add(registro)
-                        imported += 1
-                    except Exception as e:
-                        print(f"⚠️ Erro ao processar registro {row.get('nfe', 'N/A')}: {e}")
-                        continue
-                
-                # Salva no banco
-                db.session.commit()
-                print(f"✅ Migração concluída: {imported} registros importados")
-                
-                # Verifica o resultado final
-                final_count = RegistroNF.query.count()
-                print(f"📊 Total final no banco: {final_count}")
-                
-            else:
-                print("✅ Banco já contém dados, migração não necessária")
-                
-        except Exception as e:
-            print(f"❌ Erro durante a migração: {str(e)}")
-            db.session.rollback()
-            raise
+    except Exception as e:
+        logger.error(f"❌ Erro durante a migração para Google Sheets: {str(e)}")
+        raise
 
 if __name__ == '__main__':
     force_migration()
+
 

@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
 
-# Start Gunicorn with proper configuration for Render
-echo "🚀 Iniciando aplicação Flask com Gunicorn..."
+# Executa o script de migração de dados
+python3.11 migrate_data.py
 
-# Use a porta fornecida pelo Render ou 5000 como fallback
-PORT=${PORT:-5000}
+# Inicia a aplicação Gunicorn na porta fornecida pelo Render
+# O Render define a variável de ambiente PORT automaticamente
+exec gunicorn --bind 0.0.0.0:${PORT:-5000} main:app
 
-# Configurar variável Flask
-export FLASK_APP=main.py
-
-# Iniciar Gunicorn
-exec gunicorn --bind 0.0.0.0:$PORT --workers 4 --timeout 120 main:app
 
