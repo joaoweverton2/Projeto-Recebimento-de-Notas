@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from pathlib import Path
 import os
 from datetime import datetime
@@ -9,9 +9,9 @@ from io import BytesIO
 import pandas as pd
 
 # Configuração básica
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 app.config.update({
-    'UPLOAD_FOLDER': Path('uploads'),
+    'UPLOAD_FOLDER': Path('static/uploads'),
     'DATABASE_FOLDER': Path('data'),
     'BASE_NOTAS': Path('data/Base_de_notas.xlsx'),
     'MAX_CONTENT_LENGTH': 16 * 1024 * 1024,  # 16MB
@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 # Inicialização de serviços
 try:
     # Garante que os diretórios existam
-    app.config['UPLOAD_FOLDER'].mkdir(exist_ok=True)
-    app.config['DATABASE_FOLDER'].mkdir(exist_ok=True)
+    app.config['UPLOAD_FOLDER'].mkdir(parents=True, exist_ok=True)
+    app.config['DATABASE_FOLDER'].mkdir(parents=True, exist_ok=True)
     
     # Inicializa serviços
     validador = ValidadorNFE(str(app.config['BASE_NOTAS']))
@@ -41,26 +41,26 @@ except Exception as e:
     logger.critical(f"Falha na inicialização: {str(e)}")
     raise
 
+# Rota para servir arquivos estáticos
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory(app.static_folder, filename)
+
+# Rota principal
 @app.route('/')
 def index():
-    return app.send_static_file('index.html')
+    return send_from_directory(app.static_folder, 'index.html')
 
+# Rota de administração
 @app.route('/admin')
 def admin():
-    return app.send_static_file('admin.html')
+    return send_from_directory(app.static_folder, 'admin.html')
 
+# Rotas da API
 @app.route('/verificar', methods=['POST'])
 def verificar_nota():
-    """
-    Endpoint para validação de notas fiscais
-    Campos obrigatórios:
-    - uf: string (2 caracteres ou formato SP-ITV)
-    - nfe: número da nota fiscal
-    - pedido: número do pedido
-    - data_recebimento: string (formato YYYY-MM-DD)
-    """
+    """Endpoint para validação de notas fiscais"""
     try:
-        # Extrai dados do formulário
         dados = {
             'uf': request.form.get('uf', '').strip().upper(),
             'nfe': request.form.get('nfe', '').strip(),
@@ -70,17 +70,14 @@ def verificar_nota():
 
         logger.info(f"Dados recebidos: {dados}")
 
-        # Validação básica dos campos
         if not all(dados.values()):
             return jsonify({
                 'valido': False,
                 'mensagem': 'Todos os campos são obrigatórios'
             }), 400
 
-        # Validação completa
         resultado = validador.validar(**dados)
 
-        # Se válido, registra no banco
         if resultado.get('valido'):
             try:
                 db.criar_registro({
@@ -121,10 +118,7 @@ def atualizar_base():
         if not arquivo.filename.lower().endswith(('.xlsx', '.xls')):
             return jsonify({'error': 'Formato inválido (use .xlsx ou .xls)'}), 400
 
-        # Salva o arquivo
         arquivo.save(app.config['BASE_NOTAS'])
-        
-        # Recarrega o validador com a nova base
         global validador
         validador = ValidadorNFE(str(app.config['BASE_NOTAS']))
 
