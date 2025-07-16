@@ -26,22 +26,20 @@ class ValidadorNFE:
         """Configura o locale pt_BR com fallback para solução manual"""
         try:
             locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
+            self._usar_locale_manual = False
         except locale.Error:
             try:
-                # Tentar variantes comuns do locale
                 locale.setlocale(locale.LC_TIME, 'pt_BR')
-                locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil')
-                locale.setlocale(locale.LC_TIME, 'pt_BR.utf8')
+                self._usar_locale_manual = False
             except locale.Error:
                 logger.warning("Locale pt_BR não disponível, usando mapeamento manual de meses")
                 self._usar_locale_manual = True
-            else:
-                self._usar_locale_manual = False
-        else:
-            self._usar_locale_manual = False
 
     def _parse_data(self, data_str: str) -> Tuple[int, int]:
         """Converte string de data para (ano, mês)"""
+        if not data_str:
+            return 0, 0
+            
         formatos = [
             '%Y-%m-%d', '%d/%m/%Y', '%Y-%m', '%Y/%m',
             '%d-%m-%Y', '%m-%d-%Y', '%Y%m%d'
@@ -58,6 +56,9 @@ class ValidadorNFE:
     def _parse_planejamento(self, planejamento: str) -> Tuple[int, int]:
         """Converte formato 'AAAA/mês' para (ano, mês)"""
         try:
+            if not planejamento or not isinstance(planejamento, str):
+                return 0, 0
+                
             partes = planejamento.split('/')
             if len(partes) != 2:
                 return 0, 0
@@ -69,7 +70,6 @@ class ValidadorNFE:
                 mes = MESES_PT.get(mes_str, 0)
             else:
                 try:
-                    # Tentar parsear usando o locale configurado
                     dt = datetime.strptime(mes_str, '%B')
                     mes = dt.month
                 except ValueError:
@@ -128,7 +128,7 @@ class ValidadorNFE:
             except ValueError:
                 raise ValueError("NFe e Pedido devem ser números válidos")
 
-            # Carrega base de dados (usando cache)
+            # Carrega base de dados
             df = self._carregar_base()
             
             # Busca a nota fiscal
@@ -164,7 +164,7 @@ class ValidadorNFE:
             })
 
         except Exception as e:
-            resultado['mensagem'] = f"Erro na validação: {str(e)}"
+            resultado['mensagem'] = str(e)
             logger.error(f"Erro na validação: {str(e)}")
 
         return resultado

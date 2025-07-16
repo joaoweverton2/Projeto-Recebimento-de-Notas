@@ -19,11 +19,11 @@
                 <div class="card">
                     <h2><i class="fas fa-file-invoice"></i> Verificação de Nota Fiscal</h2>
                     
-                    <form id="nfeForm" action="/verificar" method="POST">
+                    <form id="nfeForm">
                         <div class="form-group">
                             <label for="uf">UF:</label>
                             <input type="text" id="uf" name="uf" required maxlength="6" 
-                                   placeholder="Ex: SP" class="uppercase">
+                                   placeholder="Ex: SP ou SP-ITV" class="uppercase">
                             <span class="error-message" id="uf-error"></span>
                         </div>
                         
@@ -43,7 +43,7 @@
                         
                         <div class="form-group">
                             <label for="data_recebimento">Data de Recebimento:</label>
-                            <input type="date" id="data_recebimento" name="data_recebimento" required pattern="\d{4}-\d{2}-\d{2}">
+                            <input type="date" id="data_recebimento" name="data_recebimento" required>
                             <span class="error-message" id="data-error"></span>
                         </div>
                         
@@ -93,7 +93,7 @@
                     <div id="errorContent" style="display: none;">
                         <div class="result-header error">
                             <span class="result-icon"><i class="fas fa-exclamation-triangle"></i></span>
-                            <h3 class="result-title">Erro na Verificação</h3>
+                            <h3 class="result-title error-header">Erro na Verificação</h3>
                         </div>
                         
                         <div class="error-message-container">
@@ -115,11 +115,11 @@
                     <div class="info-content">
                         <p>Este sistema verifica automaticamente se um chamado JIRA deve ser aberto para notas fiscais recebidas, baseado nos seguintes critérios:</p>
                         <ul>
-                            <li>A combinação de UF, NFe e Pedido deve existir na base de dados;</li>
-                            <li>Se o mês e ano da data de planejamento forem menores ou iguais aos da data de recebimento, então "Pode abrir JIRA";</li>
-                            <li>Caso contrário, "Abrir JIRA após o fechamento do mês".</li>
-                        <p>Observação - As Siglas da região de SP devem ser inseridas da seguinte maneira: Mococa: SP-MOC, Ourinhos: SP-ORN, Registro: SP-RGT, Sorocaba: SP-SOC, Itupeva: SP-ITV.</p>				
+                            <li>A combinação de UF, NFe e Pedido deve existir na base de dados</li>
+                            <li>Se o mês e ano da data de planejamento forem menores ou iguais aos da data de recebimento, então "Pode abrir JIRA"</li>
+                            <li>Caso contrário, "Abrir JIRA após o fechamento do mês"</li>
                         </ul>
+                        <p>Observação - As Siglas da região de SP devem ser inseridas da seguinte maneira: Mococa: SP-MOC, Ourinhos: SP-ORN, Registro: SP-RGT, Sorocaba: SP-SOC, Itupeva: SP-ITV.</p>
                         <p>Todos os dados inseridos são armazenados para consultas futuras.</p>
                     </div>
                 </div>

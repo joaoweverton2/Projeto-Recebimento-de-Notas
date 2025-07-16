@@ -5,6 +5,8 @@ from datetime import datetime
 import logging
 from database import DatabaseManager
 from validacao_nfe import ValidadorNFE
+from io import BytesIO
+import pandas as pd
 
 # Configuração básica
 app = Flask(__name__)
@@ -39,12 +41,20 @@ except Exception as e:
     logger.critical(f"Falha na inicialização: {str(e)}")
     raise
 
+@app.route('/')
+def index():
+    return app.send_static_file('index.html')
+
+@app.route('/admin')
+def admin():
+    return app.send_static_file('admin.html')
+
 @app.route('/verificar', methods=['POST'])
 def verificar_nota():
     """
     Endpoint para validação de notas fiscais
     Campos obrigatórios:
-    - uf: string (2 caracteres)
+    - uf: string (2 caracteres ou formato SP-ITV)
     - nfe: número da nota fiscal
     - pedido: número do pedido
     - data_recebimento: string (formato YYYY-MM-DD)
@@ -52,13 +62,20 @@ def verificar_nota():
     try:
         # Extrai dados do formulário
         dados = {
-            'uf': request.form.get('uf', '').strip(),
+            'uf': request.form.get('uf', '').strip().upper(),
             'nfe': request.form.get('nfe', '').strip(),
             'pedido': request.form.get('pedido', '').strip(),
             'data_recebimento': request.form.get('data_recebimento', '').strip()
         }
 
         logger.info(f"Dados recebidos: {dados}")
+
+        # Validação básica dos campos
+        if not all(dados.values()):
+            return jsonify({
+                'valido': False,
+                'mensagem': 'Todos os campos são obrigatórios'
+            }), 400
 
         # Validação completa
         resultado = validador.validar(**dados)
@@ -85,8 +102,9 @@ def verificar_nota():
     except Exception as e:
         logger.error(f"Erro em /verificar: {str(e)}")
         return jsonify({
+            'valido': False,
             'error': 'Erro interno no servidor',
-            'detalhes': str(e)
+            'mensagem': str(e)
         }), 500
 
 @app.route('/atualizar-base', methods=['POST'])
@@ -110,32 +128,16 @@ def atualizar_base():
         global validador
         validador = ValidadorNFE(str(app.config['BASE_NOTAS']))
 
-        return jsonify({'success': True}), 200
+        return jsonify({'success': True, 'message': 'Base de dados atualizada com sucesso'}), 200
 
     except Exception as e:
         logger.error(f"Erro em /atualizar-base: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/registros', methods=['GET'])
-def listar_registros():
-    """Endpoint para listar todos os registros"""
-    try:
-        registros = db.listar_registros()
-        return jsonify({
-            'total': len(registros),
-            'registros': registros
-        }), 200
-    except Exception as e:
-        logger.error(f"Erro em /registros: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/download-registros', methods=['GET'])
 def download_registros():
     """Endpoint para exportar registros como Excel"""
     try:
-        import pandas as pd
-        from io import BytesIO
-        
         registros = db.listar_registros()
         df = pd.DataFrame(registros)
         

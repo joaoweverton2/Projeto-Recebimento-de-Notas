@@ -1,5 +1,5 @@
-// Funções de validação e interação com o formulário
 document.addEventListener('DOMContentLoaded', function() {
+    // Elementos do DOM
     const nfeForm = document.getElementById('nfeForm');
     const resultSection = document.getElementById('resultSection');
     const loadingIndicator = document.getElementById('loadingIndicator');
@@ -8,23 +8,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const newVerificationBtn = document.getElementById('newVerificationBtn');
     const tryAgainBtn = document.getElementById('tryAgainBtn');
     
-    // Definir data máxima como hoje
+    // Configurar data máxima como hoje
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('data_recebimento').setAttribute('max', today);
     
-    // Validação de campos
+    // Função de validação do formulário
     function validateForm() {
         let isValid = true;
+        const ufPattern = /^[A-Z]{2}(-[A-Z]{2,3})?$/; // Padrão para UF (ex: SP ou SP-ITV)
         
-	// Validar UF
-	const uf = document.getElementById('uf').value.trim();
-	const ufError = document.getElementById('uf-error');
-	if (!uf || uf.length > 6) {  // Apenas verificação de comprimento
-    	ufError.textContent = 'UF deve conter até 6 caracteres';
-    	isValid = false;
-	} else {
-    	ufError.textContent = '';
-	}
+        // Validar UF
+        const uf = document.getElementById('uf').value.trim().toUpperCase();
+        const ufError = document.getElementById('uf-error');
+        if (!uf || !ufPattern.test(uf)) {
+            ufError.textContent = 'Formato inválido. Use: SP ou SP-ITV';
+            isValid = false;
+        } else {
+            ufError.textContent = '';
+        }
         
         // Validar NFe
         const nfe = document.getElementById('nfe').value.trim();
@@ -59,48 +60,62 @@ document.addEventListener('DOMContentLoaded', function() {
         return isValid;
     }
     
-    // Função para validar números
+    // Função para validar números positivos
     window.validateNumber = function(input) {
         if (input.value < 0) {
             input.value = '';
         }
     };
     
+    // Função para formatar data (DD/MM/YYYY)
+    function formatarDataRecebimento(dataString) {
+        if (!dataString) return '';
+        const [ano, mes, dia] = dataString.split('-');
+        return `${dia}/${mes}/${ano}`;
+    }
+    
     // Envio do formulário
-    nfeForm.addEventListener('submit', function(e) {
+    nfeForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         
         if (!validateForm()) {
             return;
         }
         
-        // Mostrar seção de resultado e indicador de carregamento
+        // Mostrar loading e esconder resultados/erros
         resultSection.style.display = 'block';
         loadingIndicator.style.display = 'flex';
         resultContent.style.display = 'none';
         errorContent.style.display = 'none';
-        
-        // Rolar para a seção de resultado
         resultSection.scrollIntoView({ behavior: 'smooth' });
         
-        // Obter dados do formulário
-        const formData = new FormData(nfeForm);
-        
-        // Enviar requisição para o backend
-        fetch('/verificar', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Ocultar indicador de carregamento
+        try {
+            // Preparar dados do formulário
+            const formData = new URLSearchParams();
+            formData.append('uf', document.getElementById('uf').value.trim().toUpperCase());
+            formData.append('nfe', document.getElementById('nfe').value.trim());
+            formData.append('pedido', document.getElementById('pedido').value.trim());
+            formData.append('data_recebimento', document.getElementById('data_recebimento').value);
+            
+            // Enviar requisição
+            const response = await fetch('/verificar', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: formData
+            });
+            
+            // Processar resposta
+            const data = await response.json();
             loadingIndicator.style.display = 'none';
             
+            if (!response.ok) {
+                throw new Error(data.message || 'Erro na requisição ao servidor');
+            }
+            
             if (data.valido) {
-                // Mostrar conteúdo de resultado
-                resultContent.style.display = 'block';
-                
-                // Preencher dados do resultado
+                // Preencher resultados
                 document.getElementById('result-uf').textContent = data.uf;
                 document.getElementById('result-nfe').textContent = data.nfe;
                 document.getElementById('result-pedido').textContent = data.pedido;
@@ -114,7 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const resultIcon = document.getElementById('resultIcon');
                 const resultTitle = document.getElementById('resultTitle');
                 
-                if (data.decisao === 'Pode abrir JIRA') {
+                if (data.decisao.includes('Pode abrir')) {
                     resultIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
                     resultTitle.textContent = 'Verificação Concluída - Pode Abrir JIRA';
                     decisaoElement.className = 'decision success';
@@ -123,19 +138,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     resultTitle.textContent = 'Verificação Concluída - Aguardar';
                     decisaoElement.className = 'decision warning';
                 }
+                
+                resultContent.style.display = 'block';
             } else {
-                // Mostrar conteúdo de erro
+                // Mostrar erro
                 errorContent.style.display = 'block';
-                document.getElementById('errorMessage').textContent = data.mensagem;
+                document.getElementById('errorMessage').textContent = data.mensagem || 'Nota fiscal não encontrada na base';
             }
-        })
-        .catch(error => {
-            // Ocultar indicador de carregamento e mostrar erro
+        } catch (error) {
+            // Tratar erros
             loadingIndicator.style.display = 'none';
             errorContent.style.display = 'block';
-            document.getElementById('errorMessage').textContent = 'Erro ao processar a requisição. Por favor, tente novamente.';
+            document.getElementById('errorMessage').textContent = error.message || 'Erro ao processar a requisição';
             console.error('Erro:', error);
-        });
+        }
     });
     
     // Botão para nova verificação
@@ -150,11 +166,4 @@ document.addEventListener('DOMContentLoaded', function() {
         resultSection.style.display = 'none';
         document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
     });
-    
-    // Função para formatar data
-    function formatarDataRecebimento(dataString) {
-    // Recebe no formato YYYY-MM-DD e formata para DD/MM/YYYY
-    const [ano, mes, dia] = dataString.split('-');
-    return `${dia}/${mes}/${ano}`;
-}
 });
