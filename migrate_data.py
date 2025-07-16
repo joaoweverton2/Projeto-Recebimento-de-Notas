@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from flask import Flask
 
-# Configuração de caminhos
+# Configuração básica
 project_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(project_dir))
 
@@ -15,15 +15,12 @@ sys.path.insert(0, str(project_dir))
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.StreamHandler(sys.stderr)
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
 def initialize_flask_app():
-    """Cria uma instância mínima do Flask para contexto"""
+    """Configuração mínima do Flask para contexto"""
     app = Flask(__name__)
     app.config.update({
         'GOOGLE_CREDENTIALS_BASE64': os.getenv('GOOGLE_CREDENTIALS_BASE64'),
@@ -31,59 +28,44 @@ def initialize_flask_app():
     })
     return app
 
-def verify_google_sheets_connection(db_manager):
-    """Verifica e valida a conexão com o Google Sheets"""
-    if not hasattr(db_manager, 'worksheet') or db_manager.worksheet is None:
-        logger.error("Conexão com Google Sheets falhou. Status:")
-        logger.error(f"gc inicializado: {hasattr(db_manager, 'gc') and db_manager.gc is not None}")
-        logger.error(f"spreadsheet: {hasattr(db_manager, 'spreadsheet') and db_manager.spreadsheet is not None}")
-        logger.error(f"worksheet: {hasattr(db_manager, 'worksheet') and db_manager.worksheet is not None}")
+def validate_dataframe(df):
+    """Valida as colunas necessárias no DataFrame"""
+    required_columns = {'uf', 'nfe', 'pedido', 'data_recebimento'}
+    missing = required_columns - set(df.columns)
+    if missing:
+        logger.error(f"Colunas obrigatórias faltando: {missing}")
         return False
-    
-    try:
-        # Testa o acesso à planilha
-        db_manager.worksheet.row_count
-        return True
-    except Exception as e:
-        logger.error(f"Falha ao acessar worksheet: {str(e)}")
-        return False
+    return True
 
-def find_data_file():
-    """Localiza o arquivo de dados em vários caminhos possíveis"""
-    possible_paths = [
-        project_dir / 'data' / 'Base_de_notas.xlsx',
-        Path(os.getcwd()) / 'data' / 'Base_de_notas.xlsx',
-        Path('/opt/render/project/src/data/Base_de_notas.xlsx'),
-        Path('/tmp/data/Base_de_notas.xlsx')
-    ]
-    
-    for path in possible_paths:
-        if path.exists():
-            logger.info(f"Arquivo encontrado em: {path}")
-            return path
-    
-    logger.error("Arquivo não encontrado nos caminhos: %s", possible_paths)
-    return None
-
-def process_excel_data(data_file):
-    """Processa o arquivo Excel e retorna um DataFrame limpo"""
+def process_excel_file(file_path):
+    """Carrega e valida o arquivo Excel"""
     try:
-        df = pd.read_excel(data_file, engine='openpyxl')
-        logger.info(f"Dados carregados: {len(df)} registros")
+        df = pd.read_excel(file_path, engine='openpyxl')
         
-        # Limpeza de dados
-        df = df.drop_duplicates(subset=['uf', 'nfe', 'pedido'], keep='first')
-        df['uf'] = df['uf'].astype(str).str.upper()
-        df['nfe'] = df['nfe'].astype(str)
-        df['pedido'] = df['pedido'].astype(str)
+        # Verifica colunas obrigatórias
+        if not validate_dataframe(df):
+            return None
+            
+        # Limpeza básica dos dados
+        df = df.drop_duplicates(subset=['uf', 'nfe', 'pedido'])
+        df['uf'] = df['uf'].astype(str).str.upper().str.strip()
+        df['nfe'] = df['nfe'].astype(str).str.strip()
+        df['pedido'] = df['pedido'].astype(str).str.strip()
+        
+        # Preenche valores opcionais com padrão
+        df['valido'] = df.get('valido', True)
+        df['data_planejamento'] = df.get('data_planejamento', '')
+        df['decisao'] = df.get('decisao', '')
+        df['mensagem'] = df.get('mensagem', '')
         
         return df
+        
     except Exception as e:
-        logger.error(f"Erro ao processar Excel: {str(e)}")
+        logger.error(f"Erro ao processar arquivo Excel: {str(e)}")
         return None
 
 def migrate_data():
-    """Função principal para migração de dados"""
+    """Função principal de migração"""
     logger.info("Iniciando processo de migração")
     
     app = initialize_flask_app()
@@ -92,32 +74,28 @@ def migrate_data():
         from database import DatabaseManager
         
         try:
-            # Inicializa com delay para garantir conexão
-            logger.info("Inicializando DatabaseManager...")
+            # 1. Conexão com Google Sheets
+            logger.info("Inicializando conexão com Google Sheets...")
             db_manager = DatabaseManager(app)
-            time.sleep(3)  # Espera para inicialização
+            time.sleep(3)  # Espera para estabilização
             
-            if not verify_google_sheets_connection(db_manager):
+            if not hasattr(db_manager, 'worksheet') or db_manager.worksheet is None:
+                logger.error("Falha na conexão com Google Sheets")
                 return False
 
-            # Localiza e processa arquivo
-            data_file = find_data_file()
-            if not data_file:
+            # 2. Carregar arquivo Excel
+            data_path = Path('/opt/render/project/src/data/Base_de_notas.xlsx')
+            if not data_path.exists():
+                logger.error("Arquivo não encontrado em: %s", data_path)
                 return False
                 
-            df = process_excel_data(data_file)
+            df = process_excel_file(data_path)
             if df is None:
                 return False
+                
+            logger.info(f"Dados prontos para migração: {len(df)} registros válidos")
 
-            # Obtém registros existentes
-            existing_data = db_manager.worksheet.get_all_records()
-            existing_keys = {
-                (str(r['uf']).upper(), str(r['nfe']), str(r['pedido'])) 
-                for r in existing_data
-            }
-            logger.info(f"Registros existentes: {len(existing_keys)}")
-
-            # Processa cada registro
+            # 3. Processar registros
             success_count = 0
             for _, row in df.iterrows():
                 try:
@@ -125,14 +103,13 @@ def migrate_data():
                         'uf': row['uf'],
                         'nfe': row['nfe'],
                         'pedido': row['pedido'],
-                        'data_recebimento': pd.to_datetime(row['data_recebimento']).strftime('%Y-%m-%d'),
-                        'valido': bool(row.get('valido', True)),
-                        'data_planejamento': pd.to_datetime(row['data_planejamento']).strftime('%Y-%m-%d') 
-                            if pd.notna(row.get('data_planejamento')) else None,
-                        'decisao': str(row.get('decisao', '')),
-                        'mensagem': str(row.get('mensagem', ''))
+                        'data_recebimento': row['data_recebimento'].strftime('%Y-%m-%d') if pd.notna(row['data_recebimento']) else '',
+                        'valido': bool(row['valido']),
+                        'data_planejamento': row['data_planejamento'].strftime('%Y-%m-%d') if pd.notna(row.get('data_planejamento')) else None,
+                        'decisao': str(row['decisao']),
+                        'mensagem': str(row['mensagem'])
                     }
-
+                    
                     if db_manager.criar_registro(registro):
                         success_count += 1
                         
@@ -140,7 +117,7 @@ def migrate_data():
                     logger.error(f"Erro no registro {row.get('nfe')}: {str(e)}")
                     continue
 
-            logger.info(f"Migração concluída: {success_count}/{len(df)} registros importados")
+            logger.info(f"Migração concluída: {success_count}/{len(df)} registros processados")
             return True
             
         except Exception as e:
