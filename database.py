@@ -12,10 +12,10 @@ from google.oauth2.service_account import Credentials
 # Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format=\'%(asctime)s - %(levelname)s - %(message)s\',
     handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('database.log')
+        logging.StreamHandler(), # Garante que os logs vão para stdout/stderr
+        # logging.FileHandler(\'database.log\') # Removido para evitar escrita em arquivo no Render
     ]
 )
 logger = logging.getLogger(__name__)
@@ -35,9 +35,9 @@ class RegistroNFInput(TypedDict):
 
 class DatabaseManager:
     _MESES_PT = {
-        'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
-        'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
-        'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
+        \'janeiro\': 1, \'fevereiro\': 2, \'março\': 3, \'abril\': 4,
+        \'maio\': 5, \'junho\': 6, \'julho\': 7, \'agosto\': 8,
+        \'setembro\': 9, \'outubro\': 10, \'novembro\': 11, \'dezembro\': 12
     }
 
     def __init__(self, app=None):
@@ -81,7 +81,7 @@ class DatabaseManager:
             self.spreadsheet = self.gc.open_by_key(spreadsheet_id)
             logger.info(f"Planilha aberta: {self.spreadsheet.title}")
             self.worksheet = self.spreadsheet.worksheet("registros_nf") # Nome da aba da planilha
-            logger.info("Conexão com Google Sheets estabelecida com sucesso na aba 'registros_nf'.")
+            logger.info("Conexão com Google Sheets estabelecida com sucesso na aba \'registros_nf\'.")
             
             # Garante que o cabeçalho exista
             self._ensure_headers()
@@ -114,13 +114,13 @@ class DatabaseManager:
             
         date_str = date_str.strip().lower()
         
-        if 't' in date_str:
-            date_str = date_str.split('t')[0]
+        if \'t\' in date_str:
+            date_str = date_str.split(\'t\')[0]
         
-        if ' ' in date_str and ':' in date_str:
-            date_str = date_str.split(' ')[0]
+        if \' \' in date_str and \':\' in date_str:
+            date_str = date_str.split(\' \')[0]
         
-        mes_pt_match = re.match(r'(\d{4})[/-]([a-zç]+)' , date_str)
+        mes_pt_match = re.match(r\'(\\d{4})[/-]([a-zç]+)\' , date_str)
         if mes_pt_match:
             ano = int(mes_pt_match.group(1))
             mes_nome = mes_pt_match.group(2)
@@ -128,18 +128,18 @@ class DatabaseManager:
                 return datetime(ano, self._MESES_PT[mes_nome], 1).date()
         
         formats_to_try = [
-            '%Y-%m-%d', 
-            '%Y/%m/%d', 
-            '%Y-%m', 
-            '%Y/%m', 
-            '%d/%m/%Y', 
-            '%m/%d/%Y',
+            \' %Y-%m-%d\', 
+            \' %Y/%m/%d\', 
+            \' %Y-%m\', 
+            \' %Y/%m\', 
+            \' %d/%m/%Y\', 
+            \' %m/%d/%Y\',
         ]
         
         for fmt in formats_to_try:
             try:
                 dt = datetime.strptime(date_str, fmt)
-                if fmt in ['%Y-%m', '%Y/%m']:
+                if fmt in [\' %Y-%m\', \' %Y/%m\']:
                     return dt.date().replace(day=1)
                 return dt.date()
             except ValueError:
@@ -163,28 +163,28 @@ class DatabaseManager:
             return 1
 
     def criar_registro(self, data: RegistroNFInput) -> Optional[Dict[str, Any]]:
-        logger.info(f"Tentando criar registro para UF={data['uf']}, NFe={data['nfe']}")
+        logger.info(f"Tentando criar registro para UF={data[\'uf\']}, NFe={data[\'nfe\']}")
         try:
-            existing = self.obter_registro_por_nfe(data['uf'], data['nfe'])
+            existing = self.obter_registro_por_nfe(data[\'uf\'], data[\'nfe\'])
             if existing:
-                logger.warning(f"Registro já existe: {data['uf']}-{data['nfe']}")
+                logger.warning(f"Registro já existe: {data[\'uf\']}-{data[\'nfe\']}")
                 return existing
             
             next_id = self._get_next_id()
             
-            data_recebimento_obj = self._parse_date(data['data_recebimento'])
-            data_planejamento_obj = self._parse_date(data['data_planejamento']) if data.get('data_planejamento') else None
+            data_recebimento_obj = self._parse_date(data[\'data_recebimento\'])
+            data_planejamento_obj = self._parse_date(data.get(\'data_planejamento\')) if data.get(\'data_planejamento\') else None
 
             row = [
                 next_id,
-                data['uf'].upper()[:6],
-                data['nfe'],
-                data['pedido'],
+                data[\'uf\'].upper()[:6],
+                data[\'nfe\'],
+                data[\'pedido\'],
                 data_recebimento_obj.isoformat(),
-                data.get('valido', True),
-                data_planejamento_obj.isoformat() if data_planejamento_obj else '',
-                data.get('decisao', ''),
-                data.get('mensagem', ''),
+                data.get(\'valido\', True),
+                data_planejamento_obj.isoformat() if data_planejamento_obj else \'\',
+                data.get(\'decisao\', \'\'),
+                data.get(\'mensagem\', \'\'),
                 datetime.utcnow().isoformat(),
                 datetime.utcnow().isoformat()
             ]
@@ -201,7 +201,7 @@ class DatabaseManager:
         try:
             records = self.worksheet.get_all_records()
             for record in records:
-                if record.get('id') == registro_id:
+                if record.get(\'id\') == registro_id:
                     logger.info(f"Registro encontrado: {record}")
                     return record
             logger.info(f"Registro com ID {registro_id} não encontrado.")
@@ -215,7 +215,7 @@ class DatabaseManager:
         try:
             records = self.worksheet.get_all_records()
             for record in records:
-                if str(record.get('uf', '')).upper() == uf.upper() and int(record.get('nfe', 0)) == nfe:
+                if str(record.get(\'uf\', \'\')).upper() == uf.upper() and int(record.get(\'nfe\', 0)) == nfe:
                     logger.info(f"Registro encontrado: {record}")
                     return record
             logger.info(f"Registro com UF={uf}, NFe={nfe} não encontrado.")
@@ -247,19 +247,19 @@ class DatabaseManager:
             for key, value in data.items():
                 if key in headers:
                     col_index = headers.index(key)
-                    if key == 'data_recebimento' or key == 'data_planejamento':
+                    if key == \'data_recebimento\' or key == \'data_planejamento\':
                         parsed_date = self._parse_date(value) if value else None
-                        updated_row[col_index] = parsed_date.isoformat() if parsed_date else ''
-                    elif key == 'valido':
+                        updated_row[col_index] = parsed_date.isoformat() if parsed_date else \'\'
+                    elif key == \'valido\':
                         updated_row[col_index] = bool(value)
                     else:
                         updated_row[col_index] = value
             
             # Atualiza a coluna atualizado_em
-            if 'atualizado_em' in headers:
-                updated_row[headers.index('atualizado_em')] = datetime.utcnow().isoformat()
+            if \'atualizado_em\' in headers:
+                updated_row[headers.index(\'atualizado_em\')] = datetime.utcnow().isoformat()
 
-            self.worksheet.update(f'A{row_index}:K{row_index}' , [updated_row])
+            self.worksheet.update(f\'A{row_index}:K{row_index}\' , [updated_row])
             logger.info(f"Registro atualizado: ID {registro_id}")
             return self._row_to_dict(updated_row)
         except Exception as e:
@@ -318,7 +318,7 @@ class DatabaseManager:
         try:
             records = self.worksheet.get_all_records()
             df = pd.DataFrame(records)
-            df.to_excel(filepath, index=False, engine='openpyxl')
+            df.to_excel(filepath, index=False, engine=\'openpyxl\')
             logger.info(f"Dados exportados para {filepath}")
             return True
         except Exception as e:
@@ -335,7 +335,7 @@ class DatabaseManager:
             rows_to_delete = []
             for i, row in enumerate(records):
                 record_dict = dict(zip(headers, row))
-                if (record_dict.get('nfe') == 999999 or record_dict.get('pedido') == 999999):
+                if (record_dict.get(\'nfe\') == 999999 or record_dict.get(\'pedido\') == 999999):
                     rows_to_delete.append(i + 2) # +2 para ajustar o índice da planilha
             
             if not rows_to_delete:
@@ -362,6 +362,8 @@ class DatabaseManager:
 # Testes (removidos para evitar execução direta e conflito com Flask app)
 # if __name__ == "__main__":
 #    print("Este módulo não deve ser executado diretamente. Use o Flask app.")
+
+
 
 
 
