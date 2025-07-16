@@ -3,16 +3,13 @@ from datetime import datetime
 from typing import Dict, Any, Tuple
 import locale
 import logging
+from functools import lru_cache
 
 # Configuração
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-try:
-    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
-except locale.Error:
-    logger.warning("Locale pt_BR não disponível, usando padrão")
-
+# Definir manualmente os nomes dos meses como fallback
 MESES_PT = {
     'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
     'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
@@ -23,6 +20,25 @@ class ValidadorNFE:
     def __init__(self, caminho_base: str):
         self.caminho_base = caminho_base
         self.colunas_necessarias = ["UF", "Nfe", "Pedido", "Planejamento"]
+        self._configurar_locale()
+
+    def _configurar_locale(self):
+        """Configura o locale pt_BR com fallback para solução manual"""
+        try:
+            locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
+        except locale.Error:
+            try:
+                # Tentar variantes comuns do locale
+                locale.setlocale(locale.LC_TIME, 'pt_BR')
+                locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil')
+                locale.setlocale(locale.LC_TIME, 'pt_BR.utf8')
+            except locale.Error:
+                logger.warning("Locale pt_BR não disponível, usando mapeamento manual de meses")
+                self._usar_locale_manual = True
+            else:
+                self._usar_locale_manual = False
+        else:
+            self._usar_locale_manual = False
 
     def _parse_data(self, data_str: str) -> Tuple[int, int]:
         """Converte string de data para (ano, mês)"""
@@ -47,13 +63,25 @@ class ValidadorNFE:
                 return 0, 0
                 
             ano = int(partes[0])
-            mes = MESES_PT.get(partes[1].lower().strip(), 0)
+            mes_str = partes[1].lower().strip()
+            
+            if self._usar_locale_manual:
+                mes = MESES_PT.get(mes_str, 0)
+            else:
+                try:
+                    # Tentar parsear usando o locale configurado
+                    dt = datetime.strptime(mes_str, '%B')
+                    mes = dt.month
+                except ValueError:
+                    mes = 0
+            
             return ano, mes
         except (ValueError, AttributeError):
             return 0, 0
 
+    @lru_cache(maxsize=1)
     def _carregar_base(self) -> pd.DataFrame:
-        """Carrega e valida o arquivo base"""
+        """Carrega e valida o arquivo base com cache"""
         try:
             df = pd.read_excel(self.caminho_base, engine='openpyxl')
             
@@ -100,7 +128,7 @@ class ValidadorNFE:
             except ValueError:
                 raise ValueError("NFe e Pedido devem ser números válidos")
 
-            # Carrega base de dados
+            # Carrega base de dados (usando cache)
             df = self._carregar_base()
             
             # Busca a nota fiscal
