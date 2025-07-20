@@ -4,9 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const resultSection = document.getElementById('resultSection');
     const loadingIndicator = document.getElementById('loadingIndicator');
     const resultContent = document.getElementById('resultContent');
-    const errorContent = document.getElementById('errorContent');
     const newVerificationBtn = document.getElementById('newVerificationBtn');
-    const tryAgainBtn = document.getElementById('tryAgainBtn');
     
     // Configurar data máxima como hoje
     const today = new Date().toISOString().split('T')[0];
@@ -82,11 +80,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Mostrar loading e esconder resultados/erros
+        // Mostrar loading e esconder resultados
         resultSection.style.display = 'block';
         loadingIndicator.style.display = 'flex';
         resultContent.style.display = 'none';
-        errorContent.style.display = 'none';
         resultSection.scrollIntoView({ behavior: 'smooth' });
         
         try {
@@ -106,15 +103,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: formData
             });
             
-            // Processar resposta
             const data = await response.json();
             loadingIndicator.style.display = 'none';
             
-            if (!response.ok) {
-                throw new Error(data.message || 'Erro na requisição ao servidor');
-            }
-            
-            // Sempre mostrar os resultados, mesmo em caso de erro
+            // Preencher resultados
             document.getElementById('result-uf').textContent = data.uf;
             document.getElementById('result-nfe').textContent = data.nfe;
             document.getElementById('result-pedido').textContent = data.pedido;
@@ -129,11 +121,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.valido) {
                 if (data.decisao.includes('Pode abrir')) {
                     resultIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
-                    resultTitle.textContent = 'Verificação Concluída - Pode Abrir JIRA';
+                    resultTitle.textContent = 'Verificação Concluída';
                     document.getElementById('result-decisao').className = 'decision success';
                 } else {
                     resultIcon.innerHTML = '<i class="fas fa-clock"></i>';
-                    resultTitle.textContent = 'Verificação Concluída - Aguardar';
+                    resultTitle.textContent = 'Verificação Concluída';
                     document.getElementById('result-decisao').className = 'decision warning';
                 }
             } else {
@@ -145,23 +137,28 @@ document.addEventListener('DOMContentLoaded', function() {
             resultContent.style.display = 'block';
             
         } catch (error) {
-            // Tratar erros
             loadingIndicator.style.display = 'none';
-            errorContent.style.display = 'block';
-            document.getElementById('errorMessage').textContent = error.message || 'Erro ao processar a requisição';
-            console.error('Erro:', error);
+            resultContent.style.display = 'block';
+            
+            // Preencher com dados do formulário em caso de erro
+            document.getElementById('result-uf').textContent = document.getElementById('uf').value.trim().toUpperCase();
+            document.getElementById('result-nfe').textContent = document.getElementById('nfe').value.trim();
+            document.getElementById('result-pedido').textContent = document.getElementById('pedido').value.trim();
+            document.getElementById('result-data').textContent = formatarDataRecebimento(document.getElementById('data_recebimento').value);
+            document.getElementById('result-planejamento').textContent = '';
+            document.getElementById('result-decisao').textContent = 'Entre em contato com os analistas do PCM';
+            
+            const resultIcon = document.getElementById('resultIcon');
+            const resultTitle = document.getElementById('resultTitle');
+            resultIcon.innerHTML = '<i class="fas fa-exclamation-circle"></i>';
+            resultTitle.textContent = 'Erro no servidor';
+            document.getElementById('result-decisao').className = 'decision error';
         }
     });
     
     // Botão para nova verificação
     newVerificationBtn.addEventListener('click', function() {
         nfeForm.reset();
-        resultSection.style.display = 'none';
-        document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
-    });
-    
-    // Botão para tentar novamente
-    tryAgainBtn.addEventListener('click', function() {
         resultSection.style.display = 'none';
         document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
     });

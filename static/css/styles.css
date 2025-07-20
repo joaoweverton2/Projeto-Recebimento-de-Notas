@@ -217,24 +217,28 @@ input:focus {
 
 .decision {
     font-weight: 700;
-    padding: 5px 10px;
+    padding: 8px 12px;
     border-radius: 4px;
     display: inline-block;
+    border-left: 3px solid;
 }
 
 .decision.success {
     background-color: rgba(39, 174, 96, 0.2);
     color: var(--success-color);
+    border-left-color: var(--success-color);
 }
 
 .decision.warning {
     background-color: rgba(243, 156, 18, 0.2);
     color: var(--warning-color);
+    border-left-color: var(--warning-color);
 }
 
 .decision.error {
     background-color: rgba(231, 76, 60, 0.2);
     color: var(--accent-color);
+    border-left-color: var(--accent-color);
 }
 
 .result-actions {
@@ -296,19 +300,6 @@ footer {
     margin-top: 40px;
     color: var(--dark-color);
     font-size: 0.9rem;
-}
-
-/* Seção de Erro */
-.error-header {
-    color: var(--accent-color);
-}
-
-.error-message-container {
-    background-color: rgba(231, 76, 60, 0.1);
-    border-left: 4px solid var(--accent-color);
-    padding: 15px;
-    border-radius: var(--border-radius);
-    margin-bottom: 20px;
 }
 
 /* Responsividade */

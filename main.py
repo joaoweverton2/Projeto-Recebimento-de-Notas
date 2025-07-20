@@ -28,9 +28,11 @@ logger = logging.getLogger(__name__)
 
 # Inicialização de serviços
 try:
+    # Garante que os diretórios existam
     app.config['UPLOAD_FOLDER'].mkdir(parents=True, exist_ok=True)
     app.config['DATABASE_FOLDER'].mkdir(parents=True, exist_ok=True)
     
+    # Inicializa serviços
     validador = ValidadorNFE(str(app.config['BASE_NOTAS']))
     db = DatabaseManager(app)
     
@@ -86,14 +88,19 @@ def verificar_nota():
         except Exception as e:
             logger.error(f"Erro ao salvar registro: {str(e)}")
 
-        return jsonify(resultado), 200 if resultado['valido'] else 400
+        return jsonify(resultado)
 
     except Exception as e:
         logger.error(f"Erro em /verificar: {str(e)}")
         return jsonify({
+            'uf': request.form.get('uf', '').strip().upper(),
+            'nfe': request.form.get('nfe', '').strip(),
+            'pedido': request.form.get('pedido', '').strip(),
+            'data_recebimento': request.form.get('data_recebimento', '').strip(),
             'valido': False,
-            'error': 'Erro interno no servidor',
-            'mensagem': str(e)
+            'data_planejamento': '',
+            'decisao': 'Entre em contato com os analistas do PCM',
+            'mensagem': 'Erro no servidor'
         }), 500
 
 @app.route('/atualizar-base', methods=['POST'])
