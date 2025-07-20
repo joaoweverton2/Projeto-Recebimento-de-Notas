@@ -112,8 +112,8 @@ class ValidadorNFE:
             'data_recebimento': data_recebimento,
             'valido': False,
             'data_planejamento': '',
-            'decisao': 'Entre em contato com os analistas do PCM',
-            'mensagem': 'Nota não encontrada'
+            'decisao': 'Avaliar internamente',
+            'mensagem': 'Nota não encontrada. Procure os analistas do PCM!'
         }
 
         try:

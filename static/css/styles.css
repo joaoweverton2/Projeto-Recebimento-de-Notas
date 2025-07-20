@@ -5,6 +5,7 @@
     --accent-color: #e74c3c;
     --success-color: #27ae60;
     --warning-color: #f39c12;
+    --review-color: #9b59b6;
     --light-color: #ecf0f1;
     --dark-color: #34495e;
     --text-color: #333;
@@ -195,8 +196,8 @@ input:focus {
     color: var(--warning-color);
 }
 
-.result-icon i.fa-exclamation-circle {
-    color: var(--accent-color);
+.result-icon i.fa-search {
+    color: var(--review-color);
 }
 
 .result-title {
@@ -235,10 +236,10 @@ input:focus {
     border-left-color: var(--warning-color);
 }
 
-.decision.error {
-    background-color: rgba(231, 76, 60, 0.2);
-    color: var(--accent-color);
-    border-left-color: var(--accent-color);
+.decision.review {
+    background-color: rgba(155, 89, 182, 0.2);
+    color: var(--review-color);
+    border-left-color: var(--review-color);
 }
 
 .result-actions {

@@ -99,8 +99,8 @@ def verificar_nota():
             'data_recebimento': request.form.get('data_recebimento', '').strip(),
             'valido': False,
             'data_planejamento': '',
-            'decisao': 'Entre em contato com os analistas do PCM',
-            'mensagem': 'Erro no servidor'
+            'decisao': 'Avaliar internamente',
+            'mensagem': 'Nota não encontrada. Procure os analistas do PCM!'
         }), 500
 
 @app.route('/atualizar-base', methods=['POST'])

@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const uf = document.getElementById('uf').value.trim().toUpperCase();
         const ufError = document.getElementById('uf-error');
         if (!uf || !ufPattern.test(uf)) {
-            ufError.textContent = 'Formato inválido. Use: SP ou SP-ITV';
+            ufError.textContent = 'Formato inválido. Use: CE ou SP-ITV';
             isValid = false;
         } else {
             ufError.textContent = '';
@@ -129,9 +129,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     document.getElementById('result-decisao').className = 'decision warning';
                 }
             } else {
-                resultIcon.innerHTML = '<i class="fas fa-exclamation-circle"></i>';
-                resultTitle.textContent = 'Nota não encontrada';
-                document.getElementById('result-decisao').className = 'decision error';
+                resultIcon.innerHTML = '<i class="fas fa-search"></i>';
+                resultTitle.textContent = 'Nota não encontrada. Procure os analistas do PCM!';
+                document.getElementById('result-decisao').className = 'decision review';
             }
             
             resultContent.style.display = 'block';
@@ -146,13 +146,13 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('result-pedido').textContent = document.getElementById('pedido').value.trim();
             document.getElementById('result-data').textContent = formatarDataRecebimento(document.getElementById('data_recebimento').value);
             document.getElementById('result-planejamento').textContent = '';
-            document.getElementById('result-decisao').textContent = 'Entre em contato com os analistas do PCM';
+            document.getElementById('result-decisao').textContent = 'Avaliar internamente';
             
             const resultIcon = document.getElementById('resultIcon');
             const resultTitle = document.getElementById('resultTitle');
-            resultIcon.innerHTML = '<i class="fas fa-exclamation-circle"></i>';
-            resultTitle.textContent = 'Erro no servidor';
-            document.getElementById('result-decisao').className = 'decision error';
+            resultIcon.innerHTML = '<i class="fas fa-search"></i>';
+            resultTitle.textContent = 'Nota não encontrada. Procure os analistas do PCM!';
+            document.getElementById('result-decisao').className = 'decision review';
         }
     });
     
