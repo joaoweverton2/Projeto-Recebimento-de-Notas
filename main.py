@@ -28,11 +28,9 @@ logger = logging.getLogger(__name__)
 
 # Inicialização de serviços
 try:
-    # Garante que os diretórios existam
     app.config['UPLOAD_FOLDER'].mkdir(parents=True, exist_ok=True)
     app.config['DATABASE_FOLDER'].mkdir(parents=True, exist_ok=True)
     
-    # Inicializa serviços
     validador = ValidadorNFE(str(app.config['BASE_NOTAS']))
     db = DatabaseManager(app)
     
@@ -80,17 +78,13 @@ def verificar_nota():
             'pedido': dados['pedido'],
             'data_recebimento': dados['data_recebimento'],
             'data_planejamento': resultado.get('data_planejamento', ''),
-            'decisao': resultado.get('decisao', 'Nota fiscal não prevista')
+            'decisao': resultado['decisao']
         }
         
         try:
             db.criar_registro(registro)
         except Exception as e:
             logger.error(f"Erro ao salvar registro: {str(e)}")
-
-        # Ajusta a mensagem para casos de erro
-        if not resultado.get('valido'):
-            resultado['mensagem'] = "Nota fiscal não prevista. Entre em contato com os analistas do PCM"
 
         return jsonify(resultado), 200 if resultado['valido'] else 400
 

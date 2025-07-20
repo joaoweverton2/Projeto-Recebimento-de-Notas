@@ -15,13 +15,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Função de validação do formulário
     function validateForm() {
         let isValid = true;
-        const ufPattern = /^[A-Z]{2}(-[A-Z]{2,3})?$/; // Padrão para UF (ex: CE ou SP-ITV)
+        const ufPattern = /^[A-Z]{2}(-[A-Z]{2,3})?$/;
         
         // Validar UF
         const uf = document.getElementById('uf').value.trim().toUpperCase();
         const ufError = document.getElementById('uf-error');
         if (!uf || !ufPattern.test(uf)) {
-            ufError.textContent = 'Formato inválido. Use: CE ou SP-ITV';
+            ufError.textContent = 'Formato inválido. Use: SP ou SP-ITV';
             isValid = false;
         } else {
             ufError.textContent = '';
@@ -114,37 +114,36 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(data.message || 'Erro na requisição ao servidor');
             }
             
+            // Sempre mostrar os resultados, mesmo em caso de erro
+            document.getElementById('result-uf').textContent = data.uf;
+            document.getElementById('result-nfe').textContent = data.nfe;
+            document.getElementById('result-pedido').textContent = data.pedido;
+            document.getElementById('result-data').textContent = formatarDataRecebimento(data.data_recebimento);
+            document.getElementById('result-planejamento').textContent = data.data_planejamento;
+            document.getElementById('result-decisao').textContent = data.decisao;
+            
+            // Configurar ícone e título
+            const resultIcon = document.getElementById('resultIcon');
+            const resultTitle = document.getElementById('resultTitle');
+            
             if (data.valido) {
-                // Preencher resultados
-                document.getElementById('result-uf').textContent = data.uf;
-                document.getElementById('result-nfe').textContent = data.nfe;
-                document.getElementById('result-pedido').textContent = data.pedido;
-                document.getElementById('result-data').textContent = formatarDataRecebimento(data.data_recebimento);
-                document.getElementById('result-planejamento').textContent = data.data_planejamento;
-                
-                const decisaoElement = document.getElementById('result-decisao');
-                decisaoElement.textContent = data.decisao;
-                
-                // Configurar ícone e classe baseado na decisão
-                const resultIcon = document.getElementById('resultIcon');
-                const resultTitle = document.getElementById('resultTitle');
-                
                 if (data.decisao.includes('Pode abrir')) {
                     resultIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
                     resultTitle.textContent = 'Verificação Concluída - Pode Abrir JIRA';
-                    decisaoElement.className = 'decision success';
+                    document.getElementById('result-decisao').className = 'decision success';
                 } else {
                     resultIcon.innerHTML = '<i class="fas fa-clock"></i>';
                     resultTitle.textContent = 'Verificação Concluída - Aguardar';
-                    decisaoElement.className = 'decision warning';
+                    document.getElementById('result-decisao').className = 'decision warning';
                 }
-                
-                resultContent.style.display = 'block';
             } else {
-                // Mostrar erro com a nova mensagem padrão
-                errorContent.style.display = 'block';
-                document.getElementById('errorMessage').textContent = data.mensagem || 'Nota fiscal não prevista. Entre em contato com os analistas do PCM';
+                resultIcon.innerHTML = '<i class="fas fa-exclamation-circle"></i>';
+                resultTitle.textContent = 'Nota não encontrada';
+                document.getElementById('result-decisao').className = 'decision error';
             }
+            
+            resultContent.style.display = 'block';
+            
         } catch (error) {
             // Tratar erros
             loadingIndicator.style.display = 'none';

@@ -112,8 +112,8 @@ class ValidadorNFE:
             'data_recebimento': data_recebimento,
             'valido': False,
             'data_planejamento': '',
-            'decisao': 'Nota fiscal não prevista',
-            'mensagem': 'Nota fiscal não prevista. Entre em contato com os analistas do PCM'
+            'decisao': 'Entre em contato com os analistas do PCM',
+            'mensagem': 'Nota não encontrada'
         }
 
         try:

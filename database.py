@@ -41,20 +41,16 @@ class DatabaseManager:
     def init_app(self, app):
         """Inicializa a conexão com Google Sheets"""
         try:
-            # Obter credenciais da variável de ambiente
             creds_base64 = app.config.get("GOOGLE_CREDENTIALS_BASE64")
             if not creds_base64:
                 raise ValueError("GOOGLE_CREDENTIALS_BASE64 não configurada")
 
-            # Decodificar credenciais
             creds_json = base64.b64decode(creds_base64).decode('utf-8')
             creds_info = json.loads(creds_json)
             
-            # Autenticar
             creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
             self.gc = gspread.authorize(creds)
             
-            # Acessar planilha
             spreadsheet_id = app.config.get("GOOGLE_SHEET_ID")
             if not spreadsheet_id:
                 raise ValueError("GOOGLE_SHEET_ID não configurado")
@@ -76,40 +72,26 @@ class DatabaseManager:
         self._last_request_time = time.time()
 
     def _get_or_create_worksheet(self, name: str):
-        """Obtém ou cria a worksheet com cabeçalhos"""
+        """Obtém ou cria a worksheet com cabeçalhos simplificados"""
         try:
             self._rate_limit()
             worksheet = self.spreadsheet.worksheet(name)
         except gspread.WorksheetNotFound:
             self._rate_limit()
-            worksheet = self.spreadsheet.add_worksheet(title=name, rows=1000, cols=20)
+            worksheet = self.spreadsheet.add_worksheet(title=name, rows=1000, cols=10)
             headers = [
-                "id", "uf", "nfe", "pedido", "data_recebimento",
+                "uf", "nfe", "pedido", "data_recebimento",
                 "data_planejamento", "decisao", "criado_em"
             ]
             self._rate_limit()
             worksheet.append_row(headers)
-            logger.info(f"Worksheet '{name}' criada com cabeçalhos")
+            logger.info(f"Worksheet '{name}' criada com cabeçalhos simplificados")
         return worksheet
 
-    @lru_cache(maxsize=128)
-    def _get_next_id(self) -> int:
-        """Obtém o próximo ID disponível com cache"""
-        try:
-            self._rate_limit()
-            return len(self.worksheet.col_values(1))  # Conta linhas existentes
-        except Exception as e:
-            logger.error(f"Erro ao obter próximo ID: {str(e)}")
-            raise
-
     def criar_registro(self, data: RegistroNF) -> Dict[str, Any]:
-        """Cria um novo registro na planilha com rate limiting"""
+        """Cria um novo registro na planilha sem ID"""
         try:
-            # Gerar ID sequencial
-            next_id = self._get_next_id()
-            
             registro = {
-                "id": next_id,
                 "uf": data["uf"].upper(),
                 "nfe": int(data["nfe"]),
                 "pedido": int(data["pedido"]),
@@ -121,7 +103,7 @@ class DatabaseManager:
             
             self._rate_limit()
             self.worksheet.append_row(list(registro.values()))
-            logger.info(f"Registro {next_id} adicionado com sucesso")
+            logger.info("Registro adicionado com sucesso")
             return registro
             
         except Exception as e:
@@ -129,7 +111,7 @@ class DatabaseManager:
             raise
 
     def buscar_registro(self, uf: str, nfe: int) -> Optional[Dict]:
-        """Busca um registro por UF e NFe com rate limiting"""
+        """Busca um registro por UF e NFe"""
         try:
             self._rate_limit()
             records = self.worksheet.get_all_records()
@@ -142,7 +124,7 @@ class DatabaseManager:
             return None
 
     def listar_registros(self) -> List[Dict]:
-        """Lista todos os registros com rate limiting"""
+        """Lista todos os registros"""
         try:
             self._rate_limit()
             return self.worksheet.get_all_records()
