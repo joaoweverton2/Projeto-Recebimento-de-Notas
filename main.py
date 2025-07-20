@@ -70,29 +70,27 @@ def verificar_nota():
 
         logger.info(f"Dados recebidos: {dados}")
 
-        if not all(dados.values()):
-            return jsonify({
-                'valido': False,
-                'mensagem': 'Todos os campos são obrigatórios'
-            }), 400
-
+        # Executa a validação
         resultado = validador.validar(**dados)
 
-        if resultado.get('valido'):
-            try:
-                db.criar_registro({
-                    'uf': resultado['uf'],
-                    'nfe': resultado['nfe'],
-                    'pedido': resultado['pedido'],
-                    'data_recebimento': resultado['data_recebimento'],
-                    'valido': True,
-                    'data_planejamento': resultado['data_planejamento'],
-                    'decisao': resultado['decisao'],
-                    'mensagem': resultado['mensagem']
-                })
-            except Exception as e:
-                logger.error(f"Erro ao salvar registro: {str(e)}")
-                resultado['mensagem'] = f"Validação ok, mas erro no registro: {str(e)}"
+        # Registra no Google Sheets independente do resultado
+        registro = {
+            'uf': dados['uf'],
+            'nfe': dados['nfe'],
+            'pedido': dados['pedido'],
+            'data_recebimento': dados['data_recebimento'],
+            'data_planejamento': resultado.get('data_planejamento', ''),
+            'decisao': resultado.get('decisao', 'Nota fiscal não prevista')
+        }
+        
+        try:
+            db.criar_registro(registro)
+        except Exception as e:
+            logger.error(f"Erro ao salvar registro: {str(e)}")
+
+        # Ajusta a mensagem para casos de erro
+        if not resultado.get('valido'):
+            resultado['mensagem'] = "Nota fiscal não prevista. Entre em contato com os analistas do PCM"
 
         return jsonify(resultado), 200 if resultado['valido'] else 400
 
@@ -152,5 +150,3 @@ def download_registros():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
-

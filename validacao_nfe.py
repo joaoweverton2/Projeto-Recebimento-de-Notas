@@ -112,21 +112,21 @@ class ValidadorNFE:
             'data_recebimento': data_recebimento,
             'valido': False,
             'data_planejamento': '',
-            'decisao': '',
-            'mensagem': ''
+            'decisao': 'Nota fiscal não prevista',
+            'mensagem': 'Nota fiscal não prevista. Entre em contato com os analistas do PCM'
         }
 
         try:
             # Validação básica
             if not all([uf, nfe, pedido, data_recebimento]):
-                raise ValueError("Todos os campos são obrigatórios")
+                return resultado
 
             # Conversão para tipos corretos
             try:
                 nfe_int = int(nfe)
                 pedido_int = int(pedido)
             except ValueError:
-                raise ValueError("NFe e Pedido devem ser números válidos")
+                return resultado
 
             # Carrega base de dados
             df = self._carregar_base()
@@ -139,7 +139,7 @@ class ValidadorNFE:
             ]
 
             if registro.empty:
-                raise ValueError("Nota fiscal não encontrada na base")
+                return resultado
 
             # Processa datas
             planejamento = registro['Planejamento'].iloc[0]
@@ -147,7 +147,7 @@ class ValidadorNFE:
             ano_rec, mes_rec = self._parse_data(data_recebimento)
 
             if 0 in (ano_plan, mes_plan, ano_rec, mes_rec):
-                raise ValueError("Formato de data inválido")
+                return resultado
 
             # Toma decisão
             if (ano_plan < ano_rec) or (ano_plan == ano_rec and mes_plan <= mes_rec):
@@ -164,7 +164,6 @@ class ValidadorNFE:
             })
 
         except Exception as e:
-            resultado['mensagem'] = str(e)
             logger.error(f"Erro na validação: {str(e)}")
 
         return resultado

@@ -15,13 +15,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Função de validação do formulário
     function validateForm() {
         let isValid = true;
-        const ufPattern = /^[A-Z]{2}(-[A-Z]{2,3})?$/; // Padrão para UF (ex: SP ou SP-ITV)
+        const ufPattern = /^[A-Z]{2}(-[A-Z]{2,3})?$/; // Padrão para UF (ex: CE ou SP-ITV)
         
         // Validar UF
         const uf = document.getElementById('uf').value.trim().toUpperCase();
         const ufError = document.getElementById('uf-error');
         if (!uf || !ufPattern.test(uf)) {
-            ufError.textContent = 'Formato inválido. Use: SP ou SP-ITV';
+            ufError.textContent = 'Formato inválido. Use: CE ou SP-ITV';
             isValid = false;
         } else {
             ufError.textContent = '';
@@ -141,9 +141,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 resultContent.style.display = 'block';
             } else {
-                // Mostrar erro
+                // Mostrar erro com a nova mensagem padrão
                 errorContent.style.display = 'block';
-                document.getElementById('errorMessage').textContent = data.mensagem || 'Nota fiscal não encontrada na base';
+                document.getElementById('errorMessage').textContent = data.mensagem || 'Nota fiscal não prevista. Entre em contato com os analistas do PCM';
             }
         } catch (error) {
             // Tratar erros

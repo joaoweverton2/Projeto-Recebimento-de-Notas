@@ -23,10 +23,9 @@ class RegistroNF(TypedDict):
     nfe: int
     pedido: int
     data_recebimento: str
-    valido: bool
-    data_planejamento: Optional[str]
-    decisao: Optional[str]
-    mensagem: Optional[str]
+    data_planejamento: str
+    decisao: str
+    criado_em: str
 
 class DatabaseManager:
     def __init__(self, app=None):
@@ -86,8 +85,7 @@ class DatabaseManager:
             worksheet = self.spreadsheet.add_worksheet(title=name, rows=1000, cols=20)
             headers = [
                 "id", "uf", "nfe", "pedido", "data_recebimento",
-                "valido", "data_planejamento", "decisao", "mensagem",
-                "criado_em", "atualizado_em"
+                "data_planejamento", "decisao", "criado_em"
             ]
             self._rate_limit()
             worksheet.append_row(headers)
@@ -116,12 +114,9 @@ class DatabaseManager:
                 "nfe": int(data["nfe"]),
                 "pedido": int(data["pedido"]),
                 "data_recebimento": data["data_recebimento"],
-                "valido": data.get("valido", True),
                 "data_planejamento": data.get("data_planejamento", ""),
-                "decisao": data.get("decisao", ""),
-                "mensagem": data.get("mensagem", ""),
-                "criado_em": datetime.now().isoformat(),
-                "atualizado_em": datetime.now().isoformat()
+                "decisao": data["decisao"],
+                "criado_em": datetime.now().isoformat()
             }
             
             self._rate_limit()
@@ -154,18 +149,3 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Erro ao listar registros: {str(e)}")
             return []
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
