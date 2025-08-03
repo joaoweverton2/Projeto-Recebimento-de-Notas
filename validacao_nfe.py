@@ -19,7 +19,7 @@ MESES_PT = {
 class ValidadorNFE:
     def __init__(self, caminho_base: str):
         self.caminho_base = caminho_base
-        self.colunas_necessarias = ["UF", "Nfe", "Pedido", "Planejamento"]
+        self.colunas_necessarias = ["UF", "Nfe", "Pedido", "Planejamento", "Demanda"]
         self._configurar_locale()
 
     def _configurar_locale(self):
@@ -96,6 +96,7 @@ class ValidadorNFE:
             df['UF'] = df['UF'].astype(str).str.upper().str.strip()
             df['Nfe'] = pd.to_numeric(df['Nfe'], errors='coerce')
             df['Pedido'] = pd.to_numeric(df['Pedido'], errors='coerce')
+            df['Demanda'] = df['Demanda'].astype(str).str.strip()
             df = df.dropna()
             
             return df
@@ -141,7 +142,18 @@ class ValidadorNFE:
             if registro.empty:
                 return resultado
 
-            # Processa datas
+            # Verifica a demanda primeiro
+            demanda = registro['Demanda'].iloc[0]
+            if str(demanda).strip().lower() == "engenharia de redes":
+                resultado.update({
+                    'valido': True,
+                    'data_planejamento': registro['Planejamento'].iloc[0],
+                    'decisao': 'Material da Engenharia! Segregar e avisar à área responsável.',
+                    'mensagem': 'Material identificado como da Engenharia de Redes'
+                })
+                return resultado
+
+            # Processa datas apenas se não for Engenharia de Redes
             planejamento = registro['Planejamento'].iloc[0]
             ano_plan, mes_plan = self._parse_planejamento(planejamento)
             ano_rec, mes_rec = self._parse_data(data_recebimento)
