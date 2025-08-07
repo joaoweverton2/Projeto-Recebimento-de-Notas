@@ -24,7 +24,7 @@ class Migrador:
                 logger.warning(f"Arquivo local não encontrado: {caminho_arquivo}. Retornando DataFrame vazio.")
                 return pd.DataFrame(columns=colunas_necessarias)
 
-            df = pd.read_excel(caminho_arquivo, engine=\'openpyxl\')
+            df = pd.read_excel(caminho_arquivo, engine='openpyxl')
             
             # Verifica colunas
             missing = [col for col in colunas_necessarias if col not in df.columns]
@@ -67,7 +67,7 @@ class Migrador:
                             "uf": row["uf"].upper(),
                             "nfe": int(row["nfe"]),
                             "pedido": int(row["pedido"]),
-                            "data_recebimento": pd.to_datetime(row["data_recebimento"]).strftime(\"%Y-%m-%d\"),
+                            "data_recebimento": pd.to_datetime(row["data_recebimento"]).strftime('%Y-%m-%d'),
                             "data_planejamento": "", # Não existe em registros_antigos
                             "decisao": "Migrado",
                             "criado_em": datetime.now().isoformat()
@@ -81,7 +81,7 @@ class Migrador:
 
                 if i + self._batch_size < len(df):
                     time.sleep(self._delay_between_batches) # Pausa entre lotes
-            logger.info(f"Migração de registros_antigos concluída: {resultado[\"sucesso\"]}/{resultado[\"total\"]} migrados com sucesso.")
+            logger.info(f"Migração de registros_antigos concluída: {resultado['sucesso']}/{resultado['total']} migrados com sucesso.")
         except Exception as e:
             logger.error(f"Falha geral na migração de registros_antigos: {str(e)}")
         return resultado
@@ -120,11 +120,11 @@ if __name__ == "__main__":
         
         # Migrar registros_antigos.xlsx
         resultado_registros = migrador.migrar_registros_antigos()
-        logger.info(f"Resultado final registros_antigos: {resultado_registros[\"sucesso\"]}/{resultado_registros[\"total\"]} migrados com sucesso. Erros: {resultado_registros[\"erros\"]}")
+        logger.info(f"Resultado final registros_antigos: {resultado_registros['sucesso']}/{resultado_registros['total']} migrados com sucesso. Erros: {resultado_registros['erros']}")
 
         # Migrar Base_de_notas.xlsx
         resultado_base_notas = migrador.migrar_base_notas()
-        logger.info(f"Resultado final Base_de_notas: {resultado_base_notas[\"sucesso\"]}/{resultado_base_notas[\"total\"]} migrados com sucesso. Erros: {resultado_base_notas[\"erros\"]}")
+        logger.info(f"Resultado final Base_de_notas: {resultado_base_notas['sucesso']}/{resultado_base_notas['total']} migrados com sucesso. Erros: {resultado_base_notas['erros']}")
 
 
 

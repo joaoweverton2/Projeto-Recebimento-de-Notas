@@ -13,7 +13,7 @@ import pandas as pd
 # Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
-    format=\'%(asctime)s - %(levelname)s - %(message)s\'
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class DatabaseManager:
             if not creds_base64:
                 raise ValueError("GOOGLE_CREDENTIALS_BASE64 não configurada")
 
-            creds_json = base64.b64decode(creds_base64).decode(\'utf-8\')
+            creds_json = base64.b64decode(creds_base64).decode('utf-8')
             creds_info = json.loads(creds_json)
             
             creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
