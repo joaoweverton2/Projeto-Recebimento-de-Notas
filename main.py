@@ -103,7 +103,7 @@ def verificar_nota():
             'mensagem': 'Nota não encontrada. Procure os analistas do PCM!'
         }), 500
 
-@app.route('atualizar-base', methods=['POST'])
+@app.route('/atualizar-base', methods=['POST'])
 def atualizar_base():
     """Endpoint para atualização do arquivo base"""
     try:
@@ -132,7 +132,7 @@ def atualizar_base():
         logger.error(f"Erro em /atualizar-base: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('download-registros', methods=['GET'])
+@app.route('/download-registros', methods=['GET'])
 def download_registros():
     """Endpoint para exportar registros como Excel"""
     try:
