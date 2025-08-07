@@ -8,11 +8,12 @@ import gspread
 from google.oauth2.service_account import Credentials
 import time
 from functools import lru_cache
+import pandas as pd
 
 # Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format=\'%(asctime)s - %(levelname)s - %(message)s\'
 )
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ class DatabaseManager:
         self.app = app
         self.gc = None
         self.spreadsheet = None
-        self.worksheet = None
+        self.worksheet_registros_nf = None
+        self.worksheet_base_notas = None
         self._last_request_time = 0
         self._request_delay = 1.1  # 1.1 segundos entre requisições
         if app:
@@ -45,7 +47,7 @@ class DatabaseManager:
             if not creds_base64:
                 raise ValueError("GOOGLE_CREDENTIALS_BASE64 não configurada")
 
-            creds_json = base64.b64decode(creds_base64).decode('utf-8')
+            creds_json = base64.b64decode(creds_base64).decode(\'utf-8\')
             creds_info = json.loads(creds_json)
             
             creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
@@ -56,7 +58,8 @@ class DatabaseManager:
                 raise ValueError("GOOGLE_SHEET_ID não configurado")
 
             self.spreadsheet = self.gc.open_by_key(spreadsheet_id)
-            self.worksheet = self._get_or_create_worksheet("registros_nf")
+            self.worksheet_registros_nf = self._get_or_create_worksheet("registros_nf", ["uf", "nfe", "pedido", "data_recebimento", "data_planejamento", "decisao", "criado_em"])
+            self.worksheet_base_notas = self._get_or_create_worksheet("Base_de_notas", ["UF", "Nfe", "Pedido", "Planejamento", "Demanda"])
             
             logger.info("Conexão com Google Sheets estabelecida com sucesso")
         except Exception as e:
@@ -71,25 +74,26 @@ class DatabaseManager:
             time.sleep(self._request_delay - elapsed)
         self._last_request_time = time.time()
 
-    def _get_or_create_worksheet(self, name: str):
-        """Obtém ou cria a worksheet com cabeçalhos simplificados"""
+    def _get_or_create_worksheet(self, name: str, headers: List[str]):
+        """Obtém ou cria a worksheet com cabeçalhos"""
         try:
             self._rate_limit()
             worksheet = self.spreadsheet.worksheet(name)
+            # Verifica se os cabeçalhos estão corretos, se não, adiciona
+            if worksheet.row_values(1) != headers:
+                worksheet.clear()
+                worksheet.append_row(headers)
+                logger.warning(f"Cabeçalhos da worksheet \'{name}\' corrigidos.")
         except gspread.WorksheetNotFound:
             self._rate_limit()
-            worksheet = self.spreadsheet.add_worksheet(title=name, rows=1000, cols=10)
-            headers = [
-                "uf", "nfe", "pedido", "data_recebimento",
-                "data_planejamento", "decisao", "criado_em"
-            ]
+            worksheet = self.spreadsheet.add_worksheet(title=name, rows=1000, cols=len(headers))
             self._rate_limit()
             worksheet.append_row(headers)
-            logger.info(f"Worksheet '{name}' criada com cabeçalhos simplificados")
+            logger.info(f"Worksheet \'{name}\' criada com cabeçalhos.")
         return worksheet
 
     def criar_registro(self, data: RegistroNF) -> Dict[str, Any]:
-        """Cria um novo registro na planilha sem ID"""
+        """Cria um novo registro na planilha registros_nf"""
         try:
             registro = {
                 "uf": data["uf"].upper(),
@@ -102,32 +106,59 @@ class DatabaseManager:
             }
             
             self._rate_limit()
-            self.worksheet.append_row(list(registro.values()))
-            logger.info("Registro adicionado com sucesso")
+            self.worksheet_registros_nf.append_row(list(registro.values()))
+            logger.info("Registro adicionado com sucesso em registros_nf")
             return registro
             
         except Exception as e:
-            logger.error(f"Erro ao criar registro: {str(e)}")
+            logger.error(f"Erro ao criar registro em registros_nf: {str(e)}")
             raise
 
     def buscar_registro(self, uf: str, nfe: int) -> Optional[Dict]:
-        """Busca um registro por UF e NFe"""
+        """Busca um registro por UF e NFe em registros_nf"""
         try:
             self._rate_limit()
-            records = self.worksheet.get_all_records()
+            records = self.worksheet_registros_nf.get_all_records()
             for record in records:
                 if str(record["uf"]).upper() == uf.upper() and int(record["nfe"]) == nfe:
                     return record
             return None
         except Exception as e:
-            logger.error(f"Erro ao buscar registro: {str(e)}")
+            logger.error(f"Erro ao buscar registro em registros_nf: {str(e)}")
             return None
 
     def listar_registros(self) -> List[Dict]:
-        """Lista todos os registros"""
+        """Lista todos os registros de registros_nf"""
         try:
             self._rate_limit()
-            return self.worksheet.get_all_records()
+            return self.worksheet_registros_nf.get_all_records()
         except Exception as e:
-            logger.error(f"Erro ao listar registros: {str(e)}")
+            logger.error(f"Erro ao listar registros de registros_nf: {str(e)}")
             return []
+
+    def get_base_notas_data(self) -> pd.DataFrame:
+        """Obtém os dados da planilha Base_de_notas como DataFrame"""
+        try:
+            self._rate_limit()
+            data = self.worksheet_base_notas.get_all_records()
+            if not data:
+                return pd.DataFrame(columns=["UF", "Nfe", "Pedido", "Planejamento", "Demanda"])
+            df = pd.DataFrame(data)
+            return df
+        except Exception as e:
+            logger.error(f"Erro ao obter dados da Base_de_notas: {str(e)}")
+            raise
+
+    def update_base_notas_data(self, df: pd.DataFrame):
+        """Atualiza a planilha Base_de_notas com um novo DataFrame"""
+        try:
+            self._rate_limit()
+            self.worksheet_base_notas.clear()
+            self._rate_limit()
+            self.worksheet_base_notas.update([df.columns.values.tolist()] + df.values.tolist())
+            logger.info("Base_de_notas atualizada com sucesso no Google Sheets")
+        except Exception as e:
+            logger.error(f"Erro ao atualizar Base_de_notas no Google Sheets: {str(e)}")
+            raise
+
+

@@ -11,25 +11,25 @@ logger = logging.getLogger(__name__)
 
 # Definir manualmente os nomes dos meses como fallback
 MESES_PT = {
-    'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
-    'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
-    'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
+    \'janeiro\': 1, \'fevereiro\': 2, \'março\': 3, \'abril\': 4,
+    \'maio\': 5, \'junho\': 6, \'julho\': 7, \'agosto\': 8,
+    \'setembro\': 9, \'outubro\': 10, \'novembro\': 11, \'dezembro\': 12
 }
 
 class ValidadorNFE:
-    def __init__(self, caminho_base: str):
-        self.caminho_base = caminho_base
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
         self.colunas_necessarias = ["UF", "Nfe", "Pedido", "Planejamento", "Demanda"]
         self._configurar_locale()
 
     def _configurar_locale(self):
         """Configura o locale pt_BR com fallback para solução manual"""
         try:
-            locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
+            locale.setlocale(locale.LC_TIME, \'pt_BR.UTF-8\')
             self._usar_locale_manual = False
         except locale.Error:
             try:
-                locale.setlocale(locale.LC_TIME, 'pt_BR')
+                locale.setlocale(locale.LC_TIME, \'pt_BR\')
                 self._usar_locale_manual = False
             except locale.Error:
                 logger.warning("Locale pt_BR não disponível, usando mapeamento manual de meses")
@@ -41,8 +41,8 @@ class ValidadorNFE:
             return 0, 0
             
         formatos = [
-            '%Y-%m-%d', '%d/%m/%Y', '%Y-%m', '%Y/%m',
-            '%d-%m-%Y', '%m-%d-%Y', '%Y%m%d'
+            \'%Y-%m-%d\', \'%d/%m/%Y\', \'%Y-%m\', \'%Y/%m\',
+            \'%d-%m-%Y\', \'%m-%d-%Y\', \'%Y%m%d\'
         ]
         
         for fmt in formatos:
@@ -54,12 +54,12 @@ class ValidadorNFE:
         return 0, 0
 
     def _parse_planejamento(self, planejamento: str) -> Tuple[int, int]:
-        """Converte formato 'AAAA/mês' para (ano, mês)"""
+        """Converte formato \'AAAA/mês\' para (ano, mês)"""
         try:
             if not planejamento or not isinstance(planejamento, str):
                 return 0, 0
                 
-            partes = planejamento.split('/')
+            partes = planejamento.split(\'/\')
             if len(partes) != 2:
                 return 0, 0
                 
@@ -70,7 +70,7 @@ class ValidadorNFE:
                 mes = MESES_PT.get(mes_str, 0)
             else:
                 try:
-                    dt = datetime.strptime(mes_str, '%B')
+                    dt = datetime.strptime(mes_str, \'%B\')
                     mes = dt.month
                 except ValueError:
                     mes = 0
@@ -83,7 +83,7 @@ class ValidadorNFE:
     def _carregar_base(self) -> pd.DataFrame:
         """Carrega e valida o arquivo base com cache"""
         try:
-            df = pd.read_excel(self.caminho_base, engine='openpyxl')
+            df = self.db_manager.get_base_notas_data()
             
             # Verifica colunas obrigatórias
             missing = [col for col in self.colunas_necessarias if col not in df.columns]
@@ -93,10 +93,10 @@ class ValidadorNFE:
             # Limpeza de dados
             df = df[self.colunas_necessarias].copy()
             df = df.dropna()
-            df['UF'] = df['UF'].astype(str).str.upper().str.strip()
-            df['Nfe'] = pd.to_numeric(df['Nfe'], errors='coerce')
-            df['Pedido'] = pd.to_numeric(df['Pedido'], errors='coerce')
-            df['Demanda'] = df['Demanda'].astype(str).str.strip()
+            df[\'UF\'] = df[\'UF\'].astype(str).str.upper().str.strip()
+            df[\'Nfe\'] = pd.to_numeric(df[\'Nfe\'], errors=\'coerce\')
+            df[\'Pedido\'] = pd.to_numeric(df[\'Pedido\'], errors=\'coerce\')
+            df[\'Demanda\'] = df[\'Demanda\'].astype(str).str.strip()
             df = df.dropna()
             
             return df
@@ -107,14 +107,14 @@ class ValidadorNFE:
     def validar(self, uf: str, nfe: str, pedido: str, data_recebimento: str) -> Dict[str, Any]:
         """Executa toda a validação da nota fiscal"""
         resultado = {
-            'uf': uf.upper() if uf else '',
-            'nfe': nfe,
-            'pedido': pedido,
-            'data_recebimento': data_recebimento,
-            'valido': False,
-            'data_planejamento': '',
-            'decisao': 'Avaliar internamente',
-            'mensagem': 'Nota não encontrada. Procure os analistas do PCM!'
+            \'uf\': uf.upper() if uf else \'\',
+            \'nfe\': nfe,
+            \'pedido\': pedido,
+            \'data_recebimento\': data_recebimento,
+            \'valido\': False,
+            \'data_planejamento\': \'\',
+            \'decisao\': \'Avaliar internamente\',
+            \'mensagem\': \'Nota não encontrada. Procure os analistas do PCM!\'
         }
 
         try:
@@ -134,27 +134,27 @@ class ValidadorNFE:
             
             # Busca a nota fiscal
             registro = df[
-                (df['UF'].str.upper() == uf.upper()) & 
-                (df['Nfe'] == nfe_int) & 
-                (df['Pedido'] == pedido_int)
+                (df[\'UF\'].str.upper() == uf.upper()) & 
+                (df[\'Nfe\'] == nfe_int) & 
+                (df[\'Pedido\'] == pedido_int)
             ]
 
             if registro.empty:
                 return resultado
 
             # Verifica a demanda primeiro
-            demanda = registro['Demanda'].iloc[0]
+            demanda = registro[\'Demanda\'].iloc[0]
             if str(demanda).strip().lower() == "engenharia de redes":
                 resultado.update({
-                    'valido': True,
-                    'data_planejamento': registro['Planejamento'].iloc[0],
-                    'decisao': 'Material da Engenharia! Segregar e avisar à área responsável.',
-                    'mensagem': 'Material identificado como da Engenharia de Redes'
+                    \'valido\': True,
+                    \'data_planejamento\': registro[\'Planejamento\'].iloc[0],
+                    \'decisao\': \'Material da Engenharia! Segregar e avisar à área responsável.\',
+                    \'mensagem\': \'Material identificado como da Engenharia de Redes\'
                 })
                 return resultado
 
             # Processa datas apenas se não for Engenharia de Redes
-            planejamento = registro['Planejamento'].iloc[0]
+            planejamento = registro[\'Planejamento\'].iloc[0]
             ano_plan, mes_plan = self._parse_planejamento(planejamento)
             ano_rec, mes_rec = self._parse_data(data_recebimento)
 
@@ -169,13 +169,14 @@ class ValidadorNFE:
 
             # Preenche resultado
             resultado.update({
-                'valido': True,
-                'data_planejamento': planejamento,
-                'decisao': decisao,
-                'mensagem': "Validação concluída com sucesso"
+                \'valido\': True,
+                \'data_planejamento\': planejamento,
+                \'decisao\': decisao,
+                \'mensagem\': "Validação concluída com sucesso"
             })
 
         except Exception as e:
             logger.error(f"Erro na validação: {str(e)}")
 
         return resultado
+
