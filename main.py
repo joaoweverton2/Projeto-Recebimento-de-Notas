@@ -332,16 +332,6 @@ def diagnostico_registros():
         logger.error(f"Erro no diagnóstico: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/diagnostico-completo', methods=['GET'])
-def diagnostico_completo():
-    """Endpoint para diagnóstico completo do sistema"""
-    try:
-        resultado = db.get_diagnostico_completo()
-        return jsonify(resultado), 200
-    except Exception as e:
-        logger.error(f"❌ Erro no diagnóstico completo: {e}")
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/stats', methods=['GET'])
 def estatisticas():
     """Endpoint para estatísticas do sistema"""
@@ -427,7 +417,6 @@ if __name__ == '__main__':
     logger.info("   - GET/POST /sync")
     logger.info("   - POST /limpar-cache")
     logger.info("   - GET  /diagnostico-registros")
-    logger.info("   - GET  /diagnostico-completo")
     logger.info("   - GET  /stats")
     logger.info("   - GET  /api-endpoints")
     logger.info("   - POST /testar-registro")
