@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Dict, Any, Tuple
 import locale
 import logging
-from functools import lru_cache
+
 
 # Configuração
 logging.basicConfig(level=logging.INFO)
@@ -79,30 +79,7 @@ class ValidadorNFE:
         except (ValueError, AttributeError):
             return 0, 0
 
-    @lru_cache(maxsize=1)
-    def _carregar_base(self) -> pd.DataFrame:
-        """Carrega e valida o arquivo base com cache"""
-        try:
-            df = self.db_manager.get_base_notas_data()
-            
-            # Verifica colunas obrigatórias
-            missing = [col for col in self.colunas_necessarias if col not in df.columns]
-            if missing:
-                raise ValueError(f"Colunas faltando na base: {missing}")
 
-            # Limpeza de dados
-            df = df[self.colunas_necessarias].copy()
-            df = df.dropna()
-            df['UF'] = df['UF'].astype(str).str.upper().str.strip()
-            df['Nfe'] = pd.to_numeric(df['Nfe'], errors='coerce')
-            df['Pedido'] = pd.to_numeric(df['Pedido'], errors='coerce')
-            df['Demanda'] = df['Demanda'].astype(str).str.strip()
-            df = df.dropna()
-            
-            return df
-        except Exception as e:
-            logger.error(f"Erro ao carregar base: {str(e)}")
-            raise
 
     def validar(self, uf: str, nfe: str, pedido: str, data_recebimento: str) -> Dict[str, Any]:
         """Executa toda a validação da nota fiscal"""
@@ -129,15 +106,14 @@ class ValidadorNFE:
             except ValueError:
                 return resultado
 
-            # Carrega base de dados
-            df = self._carregar_base()
+            # Busca a nota fiscal diretamente no SQLite
+            registro_data = self.db_manager.buscar_nota_base_notas(uf, nfe_int, pedido_int)
+
+            if not registro_data:
+                return resultado
             
-            # Busca a nota fiscal
-            registro = df[
-                (df['UF'].str.upper() == uf.upper()) & 
-                (df['Nfe'] == nfe_int) & 
-                (df['Pedido'] == pedido_int)
-            ]
+            # Converte o resultado para um DataFrame para manter a compatibilidade com o código existente
+            registro = pd.DataFrame([registro_data])
 
             if registro.empty:
                 return resultado

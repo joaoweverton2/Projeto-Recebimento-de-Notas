@@ -13,7 +13,7 @@ app = Flask(__name__, static_folder='static')
 app.config.update({
     'UPLOAD_FOLDER': Path('static/uploads'),
     'DATABASE_FOLDER': Path('data'),
-    # \'BASE_NOTAS\': Path(\'data/Base_de_notas.xlsx\'), # Não é mais usado diretamente
+    'SQLITE_DB_PATH': Path('instance/data/base_notas.db'),
     'MAX_CONTENT_LENGTH': 16 * 1024 * 1024,  # 16MB
     'GOOGLE_CREDENTIALS_BASE64': os.getenv('GOOGLE_CREDENTIALS_BASE64'),
     'GOOGLE_SHEET_ID': os.getenv('GOOGLE_SHEET_ID')
@@ -35,6 +35,9 @@ try:
     # Inicializa serviços
     db = DatabaseManager(app)
     validador = ValidadorNFE(db)
+    
+    # Inicializa o SQLiteManager para garantir que a tabela exista
+    db.sqlite_manager._create_table_if_not_exists()
     
     logger.info("Serviços inicializados com sucesso")
 except Exception as e:
@@ -123,7 +126,7 @@ def atualizar_base():
         # Atualizar a planilha Base_de_notas no Google Sheets
         db.update_base_notas_data(df_novo)
 
-        # Limpar o cache do validador para forçar o recarregamento da base do Google Sheets
+        # Limpar o cache do validador para forçar o recarregamento da base do SQLite
         validador._carregar_base.cache_clear()
 
         return jsonify({'success': True, 'message': 'Base de dados atualizada com sucesso no Google Sheets'}), 200

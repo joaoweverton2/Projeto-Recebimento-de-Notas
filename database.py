@@ -9,6 +9,7 @@ from google.oauth2.service_account import Credentials
 import time
 from functools import lru_cache
 import pandas as pd
+from database_sqlite import SQLiteManager
 
 # Configuração de logging
 logging.basicConfig(
@@ -35,6 +36,8 @@ class DatabaseManager:
         self.spreadsheet = None
         self.worksheet_registros_nf = None
         self.worksheet_base_notas = None
+        self.sqlite_db_path = app.config.get("SQLITE_DB_PATH", "instance/data/base_notas.db")
+        self.sqlite_manager = SQLiteManager(self.sqlite_db_path)
         self._last_request_time = 0
         self._request_delay = 1.1  # 1.1 segundos entre requisições
         if app:
@@ -59,8 +62,7 @@ class DatabaseManager:
 
             self.spreadsheet = self.gc.open_by_key(spreadsheet_id)
             self.worksheet_registros_nf = self._get_or_create_worksheet("registros_nf", ["uf", "nfe", "pedido", "data_recebimento", "data_planejamento", "decisao", "criado_em"])
-            self.worksheet_base_notas = self._get_or_create_worksheet("Base_de_notas", ["UF", "Nfe", "Pedido", "Planejamento", "Demanda"])
-            
+            # A Base_de_notas será gerenciada pelo SQLite
             logger.info("Conexão com Google Sheets estabelecida com sucesso")
         except Exception as e:
             logger.critical(f"Falha na inicialização do Google Sheets: {str(e)}")
@@ -115,7 +117,7 @@ class DatabaseManager:
             raise
 
     def buscar_registro(self, uf: str, nfe: int) -> Optional[Dict]:
-        """Busca um registro por UF e NFe em registros_nf"""
+        """Busca um registro por UF e NFe em registros_nf (Google Sheets)"""
         try:
             self._rate_limit()
             records = self.worksheet_registros_nf.get_all_records()
@@ -124,7 +126,18 @@ class DatabaseManager:
                     return record
             return None
         except Exception as e:
-            logger.error(f"Erro ao buscar registro em registros_nf: {str(e)}")
+            logger.error(f"Erro ao buscar registro em registros_nf (Google Sheets): {str(e)}")
+            return None
+
+    def buscar_nota_base_notas(self, uf: str, nfe: int, pedido: int) -> Optional[Dict]:
+        """Busca uma nota por UF, NFe e Pedido na Base_de_notas (SQLite)"""
+        try:
+            result = self.sqlite_manager.buscar_nota_sqlite(uf, nfe, pedido)
+            if result:
+                return result[0]
+            return None
+        except Exception as e:
+            logger.error(f"Erro ao buscar nota na Base_de_notas (SQLite): {str(e)}")
             return None
 
     def listar_registros(self) -> List[Dict]:
@@ -137,28 +150,12 @@ class DatabaseManager:
             return []
 
     def get_base_notas_data(self) -> pd.DataFrame:
-        """Obtém os dados da planilha Base_de_notas como DataFrame"""
-        try:
-            self._rate_limit()
-            data = self.worksheet_base_notas.get_all_records()
-            if not data:
-                return pd.DataFrame(columns=["UF", "Nfe", "Pedido", "Planejamento", "Demanda"])
-            df = pd.DataFrame(data)
-            return df
-        except Exception as e:
-            logger.error(f"Erro ao obter dados da Base_de_notas: {str(e)}")
-            raise
+        """Obtém os dados da Base_de_notas do SQLite como DataFrame"""
+        return self.sqlite_manager.get_base_notas_data()
 
     def update_base_notas_data(self, df: pd.DataFrame):
-        """Atualiza a planilha Base_de_notas com um novo DataFrame"""
-        try:
-            self._rate_limit()
-            self.worksheet_base_notas.clear()
-            self._rate_limit()
-            self.worksheet_base_notas.update([df.columns.values.tolist()] + df.values.tolist())
-            logger.info("Base_de_notas atualizada com sucesso no Google Sheets")
-        except Exception as e:
-            logger.error(f"Erro ao atualizar Base_de_notas no Google Sheets: {str(e)}")
-            raise
+        """Atualiza a Base_de_notas no SQLite com um novo DataFrame"""
+        self.sqlite_manager.update_base_notas_data(df)
+        logger.info("Base_de_notas atualizada com sucesso no SQLite")
 
 
