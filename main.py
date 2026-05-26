@@ -10,6 +10,8 @@ import pandas as pd
 
 # Configuração básica
 app = Flask(__name__, static_folder='static')
+
+# Configuração da aplicação
 app.config.update({
     'UPLOAD_FOLDER': Path('static/uploads'),
     'DATABASE_FOLDER': Path('data'),
@@ -22,13 +24,13 @@ app.config.update({
 # Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 # Inicialização de serviços
 try:
-    # Garante que os diretórios existam (ainda útil para uploads temporários)
+    # Garante que os diretórios existam
     app.config['UPLOAD_FOLDER'].mkdir(parents=True, exist_ok=True)
     app.config['DATABASE_FOLDER'].mkdir(parents=True, exist_ok=True)
     
@@ -36,25 +38,23 @@ try:
     db = DatabaseManager(app)
     validador = ValidadorNFE(db)
     
-    # Inicializa o SQLiteManager para garantir que a tabela exista
-    db.sqlite_manager._create_table_if_not_exists()
+    logger.info("✅ Serviços inicializados com sucesso")
+    logger.info(f"📁 SQLite path: {app.config['SQLITE_DB_PATH']}")
+    logger.info(f"📊 Google Sheet ID: {app.config['GOOGLE_SHEET_ID']}")
     
-    logger.info("Serviços inicializados com sucesso")
 except Exception as e:
-    logger.critical(f"Falha na inicialização: {str(e)}")
+    logger.critical(f"❌ Falha na inicialização: {str(e)}")
     raise
 
-# Rota para servir arquivos estáticos
+# Rotas para arquivos estáticos
 @app.route('/static/<path:filename>')
 def static_files(filename):
     return send_from_directory(app.static_folder, filename)
 
-# Rota principal
 @app.route('/')
 def index():
     return send_from_directory(app.static_folder, 'index.html')
 
-# Rota de administração
 @app.route('/admin')
 def admin():
     return send_from_directory(app.static_folder, 'admin.html')
@@ -71,7 +71,7 @@ def verificar_nota():
             'data_recebimento': request.form.get('data_recebimento', '').strip()
         }
 
-        logger.info(f"Dados recebidos: {dados}")
+        logger.info(f"📝 Verificando nota: {dados}")
 
         # Executa a validação
         resultado = validador.validar(**dados)
@@ -88,13 +88,14 @@ def verificar_nota():
         
         try:
             db.criar_registro(registro)
+            logger.info(f"✅ Registro salvo: {registro['decisao']}")
         except Exception as e:
-            logger.error(f"Erro ao salvar registro: {str(e)}")
+            logger.error(f"❌ Erro ao salvar registro: {str(e)}")
 
         return jsonify(resultado)
 
     except Exception as e:
-        logger.error(f"Erro em /verificar: {str(e)}")
+        logger.error(f"❌ Erro em /verificar: {str(e)}")
         return jsonify({
             'uf': request.form.get('uf', '').strip().upper(),
             'nfe': request.form.get('nfe', '').strip(),
@@ -108,7 +109,7 @@ def verificar_nota():
 
 @app.route('/atualizar-base', methods=['POST'])
 def atualizar_base():
-    """Endpoint para atualização do arquivo base"""
+    """Endpoint para atualização do arquivo base (Excel -> Google Sheets + SQLite)"""
     try:
         if 'arquivo' not in request.files:
             return jsonify({'error': 'Nenhum arquivo enviado'}), 400
@@ -118,46 +119,148 @@ def atualizar_base():
             return jsonify({'error': 'Nome de arquivo inválido'}), 400
 
         if not arquivo.filename.lower().endswith(('.xlsx', '.xls')):
-            return jsonify({'error': 'Formato inválido (use .xlsx ou .xls)'}), 400
+            return jsonify({'error': 'Formato inválido. Use arquivos .xlsx ou .xls'}), 400
 
-        # Ler o arquivo Excel enviado para um DataFrame
+        # Ler o arquivo Excel
+        logger.info(f"📥 Processando arquivo: {arquivo.filename}")
         df_novo = pd.read_excel(arquivo.stream, engine='openpyxl')
-
-        # Atualizar a planilha Base_de_notas no Google Sheets
+        
+        # Verifica colunas necessárias
+        colunas_necessarias = ["UF", "Nfe", "Pedido", "Planejamento", "Demanda"]
+        colunas_faltando = [col for col in colunas_necessarias if col not in df_novo.columns]
+        
+        if colunas_faltando:
+            return jsonify({
+                'error': f'Colunas faltando no arquivo: {colunas_faltando}'
+            }), 400
+        
+        # Atualiza tanto Google Sheets quanto SQLite
         db.update_base_notas_data(df_novo)
-
-        # Limpar o cache do validador para forçar o recarregamento da base do SQLite
-        # validador._carregar_base.cache_clear()
-
-        return jsonify({'success': True, 'message': 'Base de dados atualizada com sucesso no Google Sheets'}), 200
+        
+        # Limpa qualquer cache do validador (se existir)
+        if hasattr(validador, 'limpar_cache'):
+            validador.limpar_cache()
+        
+        registros_count = len(df_novo)
+        logger.info(f"✅ Base atualizada com sucesso! {registros_count} registros carregados")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Base de dados atualizada com sucesso! {registros_count} registros carregados.',
+            'registros': registros_count
+        }), 200
 
     except Exception as e:
-        logger.error(f"Erro em /atualizar-base: {str(e)}")
+        logger.error(f"❌ Erro em /atualizar-base: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/download-registros', methods=['GET'])
 def download_registros():
-    """Endpoint para exportar registros como Excel"""
+    """Endpoint para exportar registros de validações como Excel"""
     try:
         registros = db.listar_registros()
         df = pd.DataFrame(registros)
         
         output = BytesIO()
-        df.to_excel(output, index=False, engine='openpyxl')
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Registros')
+            
+            # Ajusta largura das colunas
+            worksheet = writer.sheets['Registros']
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
         output.seek(0)
         
         return send_file(
             output,
             as_attachment=True,
-            download_name='registros_notas_fiscais.xlsx',
+            download_name=f'registros_notas_fiscais_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     except Exception as e:
-        logger.error(f"Erro em /download-registros: {str(e)}")
+        logger.error(f"❌ Erro em /download-registros: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Endpoint para verificar saúde do sistema e consistência dos bancos"""
+    try:
+        # Verifica saúde dos bancos
+        db_status = db.verificar_saude_banco()
+        
+        return jsonify({
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'database': db_status,
+            'config': {
+                'sqlite_path': str(app.config['SQLITE_DB_PATH']),
+                'google_sheet_configured': bool(app.config['GOOGLE_SHEET_ID'])
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"❌ Erro no health check: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/sync', methods=['POST'])
+def sincronizar_bancos():
+    """Endpoint para forçar sincronização do Google Sheets para o SQLite"""
+    try:
+        resultado = db.forcar_sincronizacao()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Sincronização concluída',
+            'status': resultado
+        }), 200
+    except Exception as e:
+        logger.error(f"❌ Erro na sincronização: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/stats', methods=['GET'])
+def estatisticas():
+    """Endpoint para estatísticas do sistema"""
+    try:
+        registros = db.listar_registros()
+        df_base = db.get_base_notas_data()
+        
+        # Estatísticas básicas
+        stats = {
+            'total_validacoes': len(registros),
+            'total_base_notas': len(df_base),
+            'ultimas_validacoes': []
+        }
+        
+        # Últimas 10 validações
+        for registro in registros[-10:]:
+            stats['ultimas_validacoes'].append({
+                'uf': registro.get('uf'),
+                'nfe': registro.get('nfe'),
+                'decisao': registro.get('decisao'),
+                'data': registro.get('criado_em')
+            })
+        
+        return jsonify(stats), 200
+    except Exception as e:
+        logger.error(f"❌ Erro ao obter estatísticas: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
-
-
+    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    
+    logger.info(f"🚀 Iniciando aplicação na porta {port} (debug={debug})")
+    app.run(host='0.0.0.0', port=port, debug=debug)
