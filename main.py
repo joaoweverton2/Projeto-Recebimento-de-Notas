@@ -127,7 +127,7 @@ def atualizar_base():
         db.update_base_notas_data(df_novo)
 
         # Limpar o cache do validador para forçar o recarregamento da base do SQLite
-        validador._carregar_base.cache_clear()
+        # validador._carregar_base.cache_clear()
 
         return jsonify({'success': True, 'message': 'Base de dados atualizada com sucesso no Google Sheets'}), 200
 
