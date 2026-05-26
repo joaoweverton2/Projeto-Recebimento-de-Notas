@@ -6,6 +6,7 @@ from typing import TypedDict, Optional, Dict, List, Any
 import logging
 import gspread
 from google.oauth2.service_account import Credentials
+from google.auth.exceptions import GoogleAuthError
 import time
 import pandas as pd
 from database_sqlite import SQLiteManager
@@ -40,7 +41,6 @@ class DatabaseManager:
         self._last_request_time = 0
         self._request_delay = 1.1
         self._falhas_consecutivas = 0
-        # Nomes corretos das planilhas no Google Sheets
         self.NOME_PLANILHA_BASE = "Base_de_notas"
         self.NOME_PLANILHA_REGISTROS = "registros_nf"
         
@@ -99,7 +99,7 @@ class DatabaseManager:
                 self.worksheet_registros_nf.append_row(headers_registros)
                 logger.info("✅ Cabeçalhos corrigidos")
             
-            # Worksheet da base de notas - USANDO O NOME CORRETO "Base_de_notas"
+            # Worksheet da base de notas
             headers_base = ["UF", "Nfe", "Pedido", "Planejamento", "Demanda"]
             self.worksheet_base_notas = self._get_or_create_worksheet(self.NOME_PLANILHA_BASE, headers_base)
             
@@ -110,7 +110,7 @@ class DatabaseManager:
             raise
 
     def _rate_limit(self):
-        """Controla o rate limiting"""
+        """Controla o rate limiting para evitar exceder quotas do Google Sheets API"""
         now = time.time()
         elapsed = now - self._last_request_time
         if elapsed < self._request_delay:
@@ -158,8 +158,24 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Erro ao sincronizar: {e}")
 
+    def _reconectar_google_sheets(self):
+        """Tenta reconectar ao Google Sheets em caso de erro"""
+        try:
+            logger.info("Tentando reconectar ao Google Sheets...")
+            creds_base64 = self.app.config.get("GOOGLE_CREDENTIALS_BASE64")
+            creds_json = base64.b64decode(creds_base64).decode('utf-8')
+            creds_info = json.loads(creds_json)
+            creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+            self.gc = gspread.authorize(creds)
+            spreadsheet_id = self.app.config.get("GOOGLE_SHEET_ID")
+            self.spreadsheet = self.gc.open_by_key(spreadsheet_id)
+            self._init_worksheets()
+            logger.info("✅ Reconectado ao Google Sheets com sucesso")
+        except Exception as e:
+            logger.error(f"❌ Falha na reconexão: {e}")
+
     def criar_registro(self, data: RegistroNF) -> Dict[str, Any]:
-        """Cria um novo registro na planilha registros_nf"""
+        """Cria um novo registro na planilha registros_nf com retry automático"""
         try:
             registro = {
                 "uf": data["uf"].upper(),
@@ -176,14 +192,26 @@ class DatabaseManager:
             
             row_data = list(registro.values())
             
-            self._rate_limit()
-            self.worksheet_registros_nf.append_row(row_data, value_input_option='USER_ENTERED')
-            
-            logger.info(f"✅ Registro salvo em '{self.NOME_PLANILHA_REGISTROS}': {registro['uf']}/{registro['nfe']}")
-            return registro
+            # Tenta salvar com retry
+            max_retries = 3
+            for tentativa in range(max_retries):
+                try:
+                    self._rate_limit()
+                    self.worksheet_registros_nf.append_row(row_data, value_input_option='USER_ENTERED')
+                    logger.info(f"✅ Registro salvo em '{self.NOME_PLANILHA_REGISTROS}': {registro['uf']}/{registro['nfe']}")
+                    self._falhas_consecutivas = 0
+                    return registro
+                except gspread.exceptions.APIError as e:
+                    if tentativa < max_retries - 1:
+                        logger.warning(f"Tentativa {tentativa + 1} falhou. Tentando novamente...")
+                        time.sleep(2 ** tentativa)
+                        self._reconectar_google_sheets()
+                    else:
+                        raise e
             
         except Exception as e:
             logger.error(f"❌ Erro ao criar registro: {str(e)}")
+            self._falhas_consecutivas += 1
             raise
 
     def buscar_registro(self, uf: str, nfe: int) -> Optional[Dict]:
@@ -200,18 +228,19 @@ class DatabaseManager:
             return None
 
     def buscar_nota_base_notas(self, uf: str, nfe: int, pedido: int) -> Optional[Dict]:
-        """Busca uma nota na Base_de_notas"""
+        """Busca uma nota na Base_de_notas - primeiro SQLite, depois Google Sheets"""
         try:
-            # Primeiro tenta SQLite
+            # Primeiro tenta SQLite (cache rápido)
             result = self.sqlite_manager.buscar_nota_sqlite(uf, nfe, pedido)
             if result:
+                logger.debug(f"Nota encontrada no SQLite: {uf}/{nfe}/{pedido}")
                 return result[0]
         except Exception as e:
             logger.warning(f"Erro no SQLite: {e}")
         
-        # Depois tenta Google Sheets
+        # Se não encontrou, tenta Google Sheets e restaura cache
         try:
-            logger.info(f"Buscando no Google Sheets...")
+            logger.info(f"Nota não encontrada no SQLite, buscando no Google Sheets...")
             self._rate_limit()
             records = self.worksheet_base_notas.get_all_records()
             
@@ -220,117 +249,120 @@ class DatabaseManager:
                     int(record["Nfe"]) == nfe and 
                     int(record["Pedido"]) == pedido):
                     
-                    # Restaura cache
+                    # Restaura o cache completo
                     df_google = pd.DataFrame(records)
                     self.sqlite_manager.update_base_notas_data(df_google)
+                    logger.info(f"✅ Cache do SQLite restaurado com {len(records)} registros")
                     return record
             
             return None
             
         except Exception as e:
-            logger.error(f"Erro na busca: {str(e)}")
+            logger.error(f"Erro na busca do Google Sheets: {str(e)}")
             return None
 
     def listar_registros(self) -> List[Dict]:
-        """Lista todos os registros"""
+        """Lista todos os registros da planilha registros_nf"""
         try:
             self._rate_limit()
             return self.worksheet_registros_nf.get_all_records()
         except Exception as e:
-            logger.error(f"Erro ao listar: {str(e)}")
+            logger.error(f"Erro ao listar registros: {str(e)}")
             return []
 
     def get_base_notas_data(self) -> pd.DataFrame:
-        """Obtém os dados da Base_de_notas"""
+        """Obtém os dados da Base_de_notas - prioriza SQLite"""
         df = self.sqlite_manager.get_base_notas_data()
         
         if df.empty and self.worksheet_base_notas:
-            logger.warning("SQLite vazio, buscando do Google Sheets...")
+            logger.warning("SQLite vazio, buscando dados do Google Sheets...")
             try:
                 self._rate_limit()
                 records = self.worksheet_base_notas.get_all_records()
                 if records:
                     df = pd.DataFrame(records)
                     self.sqlite_manager.update_base_notas_data(df)
+                    logger.info(f"✅ Restaurados {len(df)} registros do Google Sheets")
             except Exception as e:
-                logger.error(f"Erro: {e}")
+                logger.error(f"Erro ao buscar dados do Google Sheets: {e}")
         
         return df
 
     def update_base_notas_data(self, df: pd.DataFrame):
-        """Atualiza AMBOS os bancos"""
+        """Atualiza AMBOS os bancos: Google Sheets (primário) e SQLite (cache)"""
         if df.empty:
-            logger.warning("DataFrame vazio")
+            logger.warning("DataFrame vazio - operação cancelada")
             return
         
-        # 1. Atualiza Google Sheets
+        # 1. Atualiza Google Sheets (fonte primária)
         if self.worksheet_base_notas:
             try:
                 self._rate_limit()
+                # Limpa dados existentes
                 self.worksheet_base_notas.clear()
+                # Prepara dados: cabeçalhos + linhas
                 dados = [df.columns.values.tolist()] + df.values.tolist()
+                # Atualiza em lote
                 self.worksheet_base_notas.update(dados, value_input_option='USER_ENTERED')
-                logger.info(f"✅ '{self.NOME_PLANILHA_BASE}' atualizada ({len(df)} registros)")
+                logger.info(f"✅ '{self.NOME_PLANILHA_BASE}' atualizada no Google Sheets ({len(df)} registros)")
             except Exception as e:
-                logger.error(f"Erro no Sheets: {e}")
+                logger.error(f"Erro ao atualizar Google Sheets: {e}")
                 raise
         
-        # 2. Atualiza SQLite
+        # 2. Atualiza SQLite (cache)
         self.sqlite_manager.update_base_notas_data(df)
+        logger.info(f"✅ Base_de_notas atualizada no SQLite ({len(df)} registros)")
 
     def verificar_saude_banco(self) -> Dict[str, Any]:
-        """Verifica saúde dos bancos"""
+        """Verifica saúde dos bancos e consistência entre eles"""
         try:
             self._rate_limit()
             records_sheets = self.worksheet_base_notas.get_all_records()
             df_sheets = pd.DataFrame(records_sheets) if records_sheets else pd.DataFrame()
             df_sqlite = self.sqlite_manager.get_base_notas_data()
             
+            sheets_count = len(df_sheets)
+            sqlite_count = len(df_sqlite)
+            
             return {
                 'base_notas': {
-                    'sheets_count': len(df_sheets),
-                    'sqlite_count': len(df_sqlite),
-                    'planilha_nome': self.NOME_PLANILHA_BASE
+                    'sheets_count': sheets_count,
+                    'sqlite_count': sqlite_count,
+                    'planilha_nome': self.NOME_PLANILHA_BASE,
+                    'sincronizado': sheets_count == sqlite_count
                 },
                 'registros_nf': {
                     'planilha_nome': self.NOME_PLANILHA_REGISTROS
                 },
-                'status': 'OK'
+                'status': 'OK' if sheets_count == sqlite_count else 'ATENÇÃO - Sincronização necessária'
             }
         except Exception as e:
+            logger.error(f"Erro na verificação de saúde: {e}")
             return {'erro': str(e), 'status': 'Erro'}
 
     def verificar_registros_nf(self) -> Dict[str, Any]:
-        """
-        Verifica o status da worksheet registros_nf
-        Retorna informações detalhadas sobre os registros de validação
-        """
+        """Verifica o status da worksheet registros_nf com estatísticas detalhadas"""
         try:
             self._rate_limit()
-            # Pega todas as linhas da planilha
             all_rows = self.worksheet_registros_nf.get_all_values()
             
-            # Verifica se a planilha tem dados
             if not all_rows:
                 return {
                     'existe': True,
                     'cabecalhos': [],
                     'total_registros': 0,
                     'ultimos_registros': [],
+                    'estatisticas_decisoes': {},
                     'worksheet_name': self.NOME_PLANILHA_REGISTROS,
-                    'mensagem': 'Planilha vazia (apenas cabeçalhos não encontrados)'
+                    'status': 'Vazia'
                 }
             
-            # Pega os cabeçalhos (primeira linha)
             headers = all_rows[0] if all_rows else []
-            
-            # Conta registros (excluindo cabeçalho)
             total_registros = len(all_rows) - 1 if len(all_rows) > 1 else 0
             
-            # Últimos 10 registros para diagnóstico
+            # Últimos 10 registros
             ultimos_registros = []
             if len(all_rows) > 1:
-                # Pega os últimos 10 registros (ou menos se tiver menos)
                 start_idx = max(1, len(all_rows) - 10)
                 for row in all_rows[start_idx:]:
                     if len(row) >= 7:
@@ -379,13 +411,9 @@ class DatabaseManager:
             }
 
     def forcar_sincronizacao(self) -> Dict[str, Any]:
-        """
-        Força a sincronização do Google Sheets para o SQLite
-        Útil quando o cache SQLite está desatualizado
-        """
+        """Força a sincronização do Google Sheets para o SQLite"""
         logger.info("🔄 Forçando sincronização do Google Sheets para o SQLite...")
         try:
-            # Busca dados do Google Sheets
             self._rate_limit()
             records = self.worksheet_base_notas.get_all_records()
             
@@ -397,10 +425,7 @@ class DatabaseManager:
                     'registros_sincronizados': 0
                 }
             
-            # Converte para DataFrame
             df_google = pd.DataFrame(records)
-            
-            # Atualiza SQLite
             self.sqlite_manager.update_base_notas_data(df_google)
             
             logger.info(f"✅ Sincronização concluída: {len(df_google)} registros")
@@ -421,114 +446,10 @@ class DatabaseManager:
                 'message': 'Falha na sincronização'
             }
 
-    def get_diagnostico_completo(self) -> Dict[str, Any]:
-        """
-        Retorna diagnóstico completo do sistema
-        Combina verificação da base de notas e dos registros
-        """
-        try:
-            # Verifica base de notas
-            base_status = self.verificar_saude_banco()
-            
-            # Verifica registros
-            registros_status = self.verificar_registros_nf()
-            
-            # Testa conectividade
-            conectividade = {
-                'google_sheets': self.worksheet_base_notas is not None,
-                'sqlite': self.sqlite_manager is not None,
-                'planilhas_configuradas': all([self.worksheet_base_notas, self.worksheet_registros_nf]),
-                'spreadsheet_acessivel': self.spreadsheet is not None
-            }
-            
-            # Informações de performance (aproximadas)
-            performance = {
-                'cache_hit_estimado': 'Alto' if base_status.get('base_notas', {}).get('sqlite_count', 0) > 0 else 'Baixo',
-                'modo_operacao': 'Híbrido (Google Sheets + SQLite)'
-            }
-            
-            return {
-                'timestamp': datetime.now().isoformat(),
-                'versao_api': '1.0.0',
-                'conectividade': conectividade,
-                'performance': performance,
-                'base_notas': base_status.get('base_notas', {}),
-                'registros_nf': {
-                    'planilha_nome': registros_status.get('worksheet_name', self.NOME_PLANILHA_REGISTROS),
-                    'total_registros': registros_status.get('total_registros', 0),
-                    'estatisticas_decisoes': registros_status.get('estatisticas_decisoes', {}),
-                    'ultimos_registros': registros_status.get('ultimos_registros', [])[:5],  # Apenas os 5 últimos
-                    'status': registros_status.get('status', 'Desconhecido')
-                },
-                'configuracoes': {
-                    'nome_planilha_base': self.NOME_PLANILHA_BASE,
-                    'nome_planilha_registros': self.NOME_PLANILHA_REGISTROS,
-                    'sqlite_path': self.sqlite_db_path,
-                    'sqlite_db_size': self._get_sqlite_tamanho()
-                },
-                'saude_geral': 'OK' if conectividade['planilhas_configuradas'] and base_status.get('status') == 'OK' else 'ATENÇÃO',
-                'recomendacoes': self._gerar_recomendacoes(base_status, registros_status, conectividade)
-            }
-            
-        except Exception as e:
-            logger.error(f"Erro no diagnóstico completo: {e}")
-            return {
-                'error': str(e),
-                'saude_geral': 'ERRO',
-                'timestamp': datetime.now().isoformat(),
-                'recomendacoes': ['Verifique os logs do servidor para mais detalhes']
-            }
-
-    def _get_sqlite_tamanho(self) -> str:
-        """Retorna o tamanho do arquivo SQLite em formato legível"""
-        try:
-            if os.path.exists(self.sqlite_db_path):
-                tamanho_bytes = os.path.getsize(self.sqlite_db_path)
-                if tamanho_bytes < 1024:
-                    return f"{tamanho_bytes} B"
-                elif tamanho_bytes < 1024 * 1024:
-                    return f"{tamanho_bytes / 1024:.1f} KB"
-                else:
-                    return f"{tamanho_bytes / (1024 * 1024):.1f} MB"
-            return "Arquivo não encontrado"
-        except Exception as e:
-            return f"Erro ao obter tamanho: {e}"
-
-    def _gerar_recomendacoes(self, base_status: Dict, registros_status: Dict, conectividade: Dict) -> List[str]:
-        """Gera recomendações baseadas no diagnóstico"""
-        recomendacoes = []
-        
-        # Verifica sincronização
-        sheets_count = base_status.get('base_notas', {}).get('sheets_count', 0)
-        sqlite_count = base_status.get('base_notas', {}).get('sqlite_count', 0)
-        
-        if sheets_count != sqlite_count:
-            recomendacoes.append(f"⚠️ Inconsistência detectada: Google Sheets ({sheets_count}) vs SQLite ({sqlite_count}). Execute /sync para sincronizar.")
-        
-        # Verifica registros
-        if registros_status.get('total_registros', 0) == 0:
-            recomendacoes.append("📝 Nenhum registro de validação encontrado. Faça algumas validações para testar o sistema.")
-        
-        # Verifica conectividade
-        if not conectividade.get('planilhas_configuradas', False):
-            recomendacoes.append("⚠️ Problemas de conectividade com as planilhas do Google Sheets. Verifique as credenciais e permissões.")
-        
-        if sheets_count == 0:
-            recomendacoes.append("📤 A planilha Base_de_notas está vazia. Faça upload de um arquivo Excel com os dados.")
-        
-        if not recomendacoes:
-            recomendacoes.append("✅ Sistema saudável. Nenhuma ação necessária no momento.")
-        
-        return recomendacoes
-
     def limpar_cache_registros(self) -> Dict[str, Any]:
-        """
-        Limpa o cache do SQLite e recarrega do Google Sheets
-        Útil quando há suspeita de corrupção no cache
-        """
-        logger.info("🧹 Limpando cache do SQLite...")
+        """Limpa o cache do SQLite e recarrega do Google Sheets"""
+        logger.info("🧹 Limpando cache do SQLite e recarregando do Google Sheets...")
         try:
-            # Busca dados do Google Sheets
             self._rate_limit()
             records = self.worksheet_base_notas.get_all_records()
             
@@ -538,11 +459,10 @@ class DatabaseManager:
                     'message': 'Google Sheets está vazio. Cache não pode ser restaurado.'
                 }
             
-            # Recria a tabela SQLite com os dados do Sheets
             df_google = pd.DataFrame(records)
             self.sqlite_manager.update_base_notas_data(df_google)
             
-            logger.info(f"✅ Cache do SQLite limpo e recarregado com {len(df_google)} registros")
+            logger.info(f"✅ Cache limpo e recarregado com {len(df_google)} registros")
             
             return {
                 'success': True,
@@ -556,4 +476,77 @@ class DatabaseManager:
                 'success': False,
                 'error': str(e),
                 'message': 'Falha ao limpar cache'
+            }
+
+    def get_diagnostico_completo(self) -> Dict[str, Any]:
+        """Retorna diagnóstico completo do sistema"""
+        try:
+            base_status = self.verificar_saude_banco()
+            registros_status = self.verificar_registros_nf()
+            
+            conectividade = {
+                'google_sheets': self.worksheet_base_notas is not None,
+                'sqlite': self.sqlite_manager is not None,
+                'planilhas_configuradas': all([self.worksheet_base_notas, self.worksheet_registros_nf]),
+                'spreadsheet_acessivel': self.spreadsheet is not None
+            }
+            
+            # Tamanho do SQLite
+            sqlite_tamanho = "Desconhecido"
+            try:
+                if os.path.exists(self.sqlite_db_path):
+                    tamanho_bytes = os.path.getsize(self.sqlite_db_path)
+                    if tamanho_bytes < 1024:
+                        sqlite_tamanho = f"{tamanho_bytes} B"
+                    elif tamanho_bytes < 1024 * 1024:
+                        sqlite_tamanho = f"{tamanho_bytes / 1024:.1f} KB"
+                    else:
+                        sqlite_tamanho = f"{tamanho_bytes / (1024 * 1024):.1f} MB"
+            except:
+                pass
+            
+            # Gerar recomendações
+            recomendacoes = []
+            sheets_count = base_status.get('base_notas', {}).get('sheets_count', 0)
+            sqlite_count = base_status.get('base_notas', {}).get('sqlite_count', 0)
+            
+            if sheets_count != sqlite_count:
+                recomendacoes.append(f"Inconsistência detectada: Google Sheets ({sheets_count}) vs SQLite ({sqlite_count}). Execute /sync.")
+            
+            if registros_status.get('total_registros', 0) == 0:
+                recomendacoes.append("Nenhum registro de validação encontrado. Faça algumas validações para testar.")
+            
+            if sheets_count == 0:
+                recomendacoes.append("Planilha Base_de_notas vazia. Faça upload de um arquivo Excel.")
+            
+            if not recomendacoes:
+                recomendacoes.append("Sistema saudável. Nenhuma ação necessária.")
+            
+            return {
+                'timestamp': datetime.now().isoformat(),
+                'versao_api': '2.0.0',
+                'conectividade': conectividade,
+                'base_notas': base_status.get('base_notas', {}),
+                'registros_nf': {
+                    'planilha_nome': registros_status.get('worksheet_name', self.NOME_PLANILHA_REGISTROS),
+                    'total_registros': registros_status.get('total_registros', 0),
+                    'estatisticas_decisoes': registros_status.get('estatisticas_decisoes', {}),
+                    'status': registros_status.get('status', 'Desconhecido')
+                },
+                'configuracoes': {
+                    'nome_planilha_base': self.NOME_PLANILHA_BASE,
+                    'nome_planilha_registros': self.NOME_PLANILHA_REGISTROS,
+                    'sqlite_path': self.sqlite_db_path,
+                    'sqlite_tamanho': sqlite_tamanho
+                },
+                'recomendacoes': recomendacoes,
+                'saude_geral': 'OK' if conectividade['planilhas_configuradas'] and sheets_count == sqlite_count else 'ATENÇÃO'
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro no diagnóstico completo: {e}")
+            return {
+                'error': str(e),
+                'saude_geral': 'ERRO',
+                'timestamp': datetime.now().isoformat()
             }

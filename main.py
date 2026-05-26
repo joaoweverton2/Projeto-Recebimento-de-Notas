@@ -60,7 +60,10 @@ def index():
 def admin():
     return send_from_directory(app.static_folder, 'admin.html')
 
-# Rotas da API
+# ============================================================
+# ROTAS DA API - PRINCIPAIS
+# ============================================================
+
 @app.route('/verificar', methods=['POST'])
 def verificar_nota():
     """Endpoint para validação de notas fiscais"""
@@ -196,11 +199,14 @@ def download_registros():
         logger.error(f"❌ Erro em /download-registros: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+# ============================================================
+# ROTAS DE DIAGNÓSTICO E MONITORAMENTO
+# ============================================================
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Endpoint para verificar saúde do sistema e consistência dos bancos"""
     try:
-        # Verifica saúde dos bancos
         db_status = db.verificar_saude_banco()
         
         return jsonify({
@@ -220,34 +226,81 @@ def health_check():
             'timestamp': datetime.now().isoformat()
         }), 500
 
-@app.route('/sync', methods=['GET', 'POST'])
-def sincronizar_bancos():
-    """Endpoint para forçar sincronização do Google Sheets para o SQLite
-    Aceita tanto GET quanto POST para facilitar testes"""
+@app.route('/health/detalhado', methods=['GET'])
+def health_detalhado():
+    """Endpoint para health check detalhado com informações de performance"""
     try:
-        resultado = db.forcar_sincronizacao()
+        # Mede tempo de resposta do Google Sheets
+        start_time = time.time()
+        db_status = db.verificar_saude_banco()
+        sheets_response_time = time.time() - start_time
+        
+        # Mede tempo de resposta do SQLite
+        start_time = time.time()
+        df_sqlite = db.get_base_notas_data()
+        sqlite_response_time = time.time() - start_time
         
         return jsonify({
-            'success': True,
-            'message': 'Sincronização concluída',
-            'status': resultado
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'performance': {
+                'google_sheets_response_time': round(sheets_response_time, 3),
+                'sqlite_response_time': round(sqlite_response_time, 3)
+            },
+            'database': db_status,
+            'registros': {
+                'total_validacoes': len(db.listar_registros()),
+                'total_base_notas': len(df_sqlite)
+            },
+            'config': {
+                'sqlite_path': str(app.config['SQLITE_DB_PATH']),
+                'google_sheet_configured': bool(app.config['GOOGLE_SHEET_ID']),
+                'planilha_base': db.NOME_PLANILHA_BASE,
+                'planilha_registros': db.NOME_PLANILHA_REGISTROS
+            }
         }), 200
     except Exception as e:
+        logger.error(f"❌ Erro no health detalhado: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/sync', methods=['GET', 'POST'])
+def sincronizar_bancos():
+    """Endpoint para forçar sincronização do Google Sheets para o SQLite"""
+    try:
+        resultado = db.forcar_sincronizacao()
+        return jsonify({
+            'success': resultado.get('success', False),
+            'message': resultado.get('message', ''),
+            'status': resultado
+        }), 200 if resultado.get('success') else 500
+    except Exception as e:
         logger.error(f"❌ Erro na sincronização: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/limpar-cache', methods=['POST'])
+def limpar_cache():
+    """Endpoint para limpar e recarregar o cache SQLite do Google Sheets"""
+    try:
+        resultado = db.limpar_cache_registros()
+        return jsonify(resultado), 200 if resultado.get('success') else 500
+    except Exception as e:
+        logger.error(f"❌ Erro ao limpar cache: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/diagnostico-registros', methods=['GET'])
 def diagnostico_registros():
     """Endpoint para diagnosticar problemas na worksheet registros_nf"""
     try:
-        # Verifica status dos registros
         status = db.verificar_registros_nf()
         
-        # Testa escrita na worksheet
+        # Testa escrita na worksheet (opcional)
         test_result = None
         if status.get('existe', False):
             try:
-                # Tenta escrever um registro de teste
                 registro_teste = {
                     'uf': 'TESTE',
                     'nfe': 999999,
@@ -257,10 +310,7 @@ def diagnostico_registros():
                     'decisao': 'TESTE_SISTEMA',
                     'criado_em': datetime.now().isoformat()
                 }
-                
-                # Tenta salvar o registro de teste
                 resultado = db.criar_registro(registro_teste)
-                
                 test_result = {
                     'success': True,
                     'message': 'Teste de escrita realizado com sucesso',
@@ -275,7 +325,7 @@ def diagnostico_registros():
         return jsonify({
             'diagnostico': status,
             'teste_escrita': test_result,
-            'recomendacao': 'Verifique as permissões da planilha no Google Sheets' if not status.get('existe') else 'Sistema funcionando corretamente'
+            'recomendacao': 'Sistema funcionando corretamente' if status.get('existe') else 'Verifique as permissões da planilha'
         }), 200
         
     except Exception as e:
@@ -284,41 +334,57 @@ def diagnostico_registros():
 
 @app.route('/diagnostico-completo', methods=['GET'])
 def diagnostico_completo():
-    """
-    Endpoint para diagnóstico completo do sistema
-    Retorna informações detalhadas sobre todos os componentes
-    """
+    """Endpoint para diagnóstico completo do sistema"""
     try:
-        # Obtém diagnóstico completo do DatabaseManager
-        diagnostico = db.get_diagnostico_completo()
-        
-        # Adiciona informações sobre o validador
-        diagnostico['validador'] = {
-            'locale_configurado': not validador._usar_locale_manual if hasattr(validador, '_usar_locale_manual') else False,
-            'modo_meses': 'Manual' if hasattr(validador, '_usar_locale_manual') and validador._usar_locale_manual else 'Automático'
-        }
-        
-        # Adiciona timestamp
-        diagnostico['timestamp'] = datetime.now().isoformat()
-        diagnostico['versao_api'] = '1.0.0'
-        
-        # Adiciona informações de ambiente
-        diagnostico['ambiente'] = {
-            'debug': app.debug,
-            'port': os.environ.get('PORT', '5000'),
-            'python_version': os.environ.get('PYTHON_VERSION', 'Não disponível')
-        }
-        
-        return jsonify(diagnostico), 200
-        
+        resultado = db.get_diagnostico_completo()
+        return jsonify(resultado), 200
     except Exception as e:
         logger.error(f"❌ Erro no diagnóstico completo: {e}")
-        return jsonify({
-            'error': str(e),
-            'status': 'ERRO',
-            'timestamp': datetime.now().isoformat(),
-            'mensagem': 'Falha ao obter diagnóstico completo. Verifique os logs.'
-        }), 500
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/stats', methods=['GET'])
+def estatisticas():
+    """Endpoint para estatísticas do sistema"""
+    try:
+        registros = db.listar_registros()
+        df_base = db.get_base_notas_data()
+        
+        stats = {
+            'total_validacoes': len(registros),
+            'total_base_notas': len(df_base),
+            'ultimas_validacoes': []
+        }
+        
+        for registro in registros[-10:]:
+            stats['ultimas_validacoes'].append({
+                'uf': registro.get('uf'),
+                'nfe': registro.get('nfe'),
+                'decisao': registro.get('decisao'),
+                'data': registro.get('criado_em')
+            })
+        
+        return jsonify(stats), 200
+    except Exception as e:
+        logger.error(f"❌ Erro ao obter estatísticas: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api-endpoints', methods=['GET'])
+def listar_endpoints():
+    """Lista todos os endpoints disponíveis na API"""
+    endpoints = []
+    for rule in app.url_map.iter_rules():
+        if rule.endpoint != 'static':
+            endpoints.append({
+                'endpoint': rule.endpoint,
+                'methods': list(rule.methods),
+                'path': str(rule)
+            })
+    
+    return jsonify({
+        'total_endpoints': len(endpoints),
+        'endpoints': endpoints,
+        'timestamp': datetime.now().isoformat()
+    }), 200
 
 @app.route('/testar-registro', methods=['POST'])
 def testar_registro():
@@ -345,97 +411,6 @@ def testar_registro():
         logger.error(f"Erro no teste: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/stats', methods=['GET'])
-def estatisticas():
-    """Endpoint para estatísticas do sistema"""
-    try:
-        registros = db.listar_registros()
-        df_base = db.get_base_notas_data()
-        
-        # Estatísticas básicas
-        stats = {
-            'total_validacoes': len(registros),
-            'total_base_notas': len(df_base),
-            'ultimas_validacoes': []
-        }
-        
-        # Últimas 10 validações
-        for registro in registros[-10:]:
-            stats['ultimas_validacoes'].append({
-                'uf': registro.get('uf'),
-                'nfe': registro.get('nfe'),
-                'decisao': registro.get('decisao'),
-                'data': registro.get('criado_em')
-            })
-        
-        return jsonify(stats), 200
-    except Exception as e:
-        logger.error(f"❌ Erro ao obter estatísticas: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/health/detalhado', methods=['GET'])
-def health_detalhado():
-    """Endpoint para health check detalhado com informações de performance"""
-    try:
-        import time
-        
-        # Mede tempo de resposta do Google Sheets
-        start_time = time.time()
-        db_status = db.verificar_saude_banco()
-        sheets_response_time = time.time() - start_time
-        
-        # Mede tempo de resposta do SQLite
-        start_time = time.time()
-        df_sqlite = db.get_base_notas_data()
-        sqlite_response_time = time.time() - start_time
-        
-        return jsonify({
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'performance': {
-                'google_sheets_response_time': round(sheets_response_time, 3),
-                'sqlite_response_time': round(sqlite_response_time, 3),
-                'cache_hit_rate': 'N/A'  # Poderia ser implementado
-            },
-            'database': db_status,
-            'registros': {
-                'total_validacoes': len(db.listar_registros()),
-                'total_base_notas': len(df_sqlite)
-            },
-            'config': {
-                'sqlite_path': str(app.config['SQLITE_DB_PATH']),
-                'google_sheet_configured': bool(app.config['GOOGLE_SHEET_ID']),
-                'planilha_base': db.NOME_PLANILHA_BASE,
-                'planilha_registros': db.NOME_PLANILHA_REGISTROS
-            }
-        }), 200
-    except Exception as e:
-        logger.error(f"❌ Erro no health detalhado: {e}")
-        return jsonify({
-            'status': 'unhealthy',
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-# Rota para listar todos os endpoints disponíveis (útil para debug)
-@app.route('/api-endpoints', methods=['GET'])
-def listar_endpoints():
-    """Lista todos os endpoints disponíveis na API"""
-    endpoints = []
-    for rule in app.url_map.iter_rules():
-        if rule.endpoint != 'static':
-            endpoints.append({
-                'endpoint': rule.endpoint,
-                'methods': list(rule.methods),
-                'path': str(rule)
-            })
-    
-    return jsonify({
-        'total_endpoints': len(endpoints),
-        'endpoints': endpoints,
-        'timestamp': datetime.now().isoformat()
-    }), 200
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
@@ -449,11 +424,12 @@ if __name__ == '__main__':
     logger.info("   - GET  /download-registros")
     logger.info("   - GET  /health")
     logger.info("   - GET  /health/detalhado")
-    logger.info("   - POST /sync (também aceita GET)")
+    logger.info("   - GET/POST /sync")
+    logger.info("   - POST /limpar-cache")
     logger.info("   - GET  /diagnostico-registros")
     logger.info("   - GET  /diagnostico-completo")
-    logger.info("   - POST /testar-registro")
     logger.info("   - GET  /stats")
     logger.info("   - GET  /api-endpoints")
+    logger.info("   - POST /testar-registro")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
