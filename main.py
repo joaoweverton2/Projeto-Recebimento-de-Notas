@@ -7,6 +7,7 @@ from database import DatabaseManager
 from validacao_nfe import ValidadorNFE
 from io import BytesIO
 import pandas as pd
+import time
 
 # Configuração básica
 app = Flask(__name__, static_folder='static')
@@ -219,9 +220,10 @@ def health_check():
             'timestamp': datetime.now().isoformat()
         }), 500
 
-@app.route('/sync', methods=['POST'])
+@app.route('/sync', methods=['GET', 'POST'])
 def sincronizar_bancos():
-    """Endpoint para forçar sincronização do Google Sheets para o SQLite"""
+    """Endpoint para forçar sincronização do Google Sheets para o SQLite
+    Aceita tanto GET quanto POST para facilitar testes"""
     try:
         resultado = db.forcar_sincronizacao()
         
@@ -280,6 +282,44 @@ def diagnostico_registros():
         logger.error(f"Erro no diagnóstico: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/diagnostico-completo', methods=['GET'])
+def diagnostico_completo():
+    """
+    Endpoint para diagnóstico completo do sistema
+    Retorna informações detalhadas sobre todos os componentes
+    """
+    try:
+        # Obtém diagnóstico completo do DatabaseManager
+        diagnostico = db.get_diagnostico_completo()
+        
+        # Adiciona informações sobre o validador
+        diagnostico['validador'] = {
+            'locale_configurado': not validador._usar_locale_manual if hasattr(validador, '_usar_locale_manual') else False,
+            'modo_meses': 'Manual' if hasattr(validador, '_usar_locale_manual') and validador._usar_locale_manual else 'Automático'
+        }
+        
+        # Adiciona timestamp
+        diagnostico['timestamp'] = datetime.now().isoformat()
+        diagnostico['versao_api'] = '1.0.0'
+        
+        # Adiciona informações de ambiente
+        diagnostico['ambiente'] = {
+            'debug': app.debug,
+            'port': os.environ.get('PORT', '5000'),
+            'python_version': os.environ.get('PYTHON_VERSION', 'Não disponível')
+        }
+        
+        return jsonify(diagnostico), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no diagnóstico completo: {e}")
+        return jsonify({
+            'error': str(e),
+            'status': 'ERRO',
+            'timestamp': datetime.now().isoformat(),
+            'mensagem': 'Falha ao obter diagnóstico completo. Verifique os logs.'
+        }), 500
+
 @app.route('/testar-registro', methods=['POST'])
 def testar_registro():
     """Endpoint para testar criação de registro manualmente"""
@@ -333,10 +373,87 @@ def estatisticas():
         logger.error(f"❌ Erro ao obter estatísticas: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/health/detalhado', methods=['GET'])
+def health_detalhado():
+    """Endpoint para health check detalhado com informações de performance"""
+    try:
+        import time
+        
+        # Mede tempo de resposta do Google Sheets
+        start_time = time.time()
+        db_status = db.verificar_saude_banco()
+        sheets_response_time = time.time() - start_time
+        
+        # Mede tempo de resposta do SQLite
+        start_time = time.time()
+        df_sqlite = db.get_base_notas_data()
+        sqlite_response_time = time.time() - start_time
+        
+        return jsonify({
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'performance': {
+                'google_sheets_response_time': round(sheets_response_time, 3),
+                'sqlite_response_time': round(sqlite_response_time, 3),
+                'cache_hit_rate': 'N/A'  # Poderia ser implementado
+            },
+            'database': db_status,
+            'registros': {
+                'total_validacoes': len(db.listar_registros()),
+                'total_base_notas': len(df_sqlite)
+            },
+            'config': {
+                'sqlite_path': str(app.config['SQLITE_DB_PATH']),
+                'google_sheet_configured': bool(app.config['GOOGLE_SHEET_ID']),
+                'planilha_base': db.NOME_PLANILHA_BASE,
+                'planilha_registros': db.NOME_PLANILHA_REGISTROS
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"❌ Erro no health detalhado: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+# Rota para listar todos os endpoints disponíveis (útil para debug)
+@app.route('/api-endpoints', methods=['GET'])
+def listar_endpoints():
+    """Lista todos os endpoints disponíveis na API"""
+    endpoints = []
+    for rule in app.url_map.iter_rules():
+        if rule.endpoint != 'static':
+            endpoints.append({
+                'endpoint': rule.endpoint,
+                'methods': list(rule.methods),
+                'path': str(rule)
+            })
+    
+    return jsonify({
+        'total_endpoints': len(endpoints),
+        'endpoints': endpoints,
+        'timestamp': datetime.now().isoformat()
+    }), 200
+
 if __name__ == '__main__':
-    import time
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
     logger.info(f"🚀 Iniciando aplicação na porta {port} (debug={debug})")
+    logger.info("📋 Endpoints disponíveis:")
+    logger.info("   - GET  /")
+    logger.info("   - GET  /admin")
+    logger.info("   - POST /verificar")
+    logger.info("   - POST /atualizar-base")
+    logger.info("   - GET  /download-registros")
+    logger.info("   - GET  /health")
+    logger.info("   - GET  /health/detalhado")
+    logger.info("   - POST /sync (também aceita GET)")
+    logger.info("   - GET  /diagnostico-registros")
+    logger.info("   - GET  /diagnostico-completo")
+    logger.info("   - POST /testar-registro")
+    logger.info("   - GET  /stats")
+    logger.info("   - GET  /api-endpoints")
+    
     app.run(host='0.0.0.0', port=port, debug=debug)
