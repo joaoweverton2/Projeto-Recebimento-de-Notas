@@ -479,19 +479,68 @@ class DatabaseManager:
             }
 
     def get_diagnostico_completo(self) -> Dict[str, Any]:
-        """Retorna diagnóstico completo do sistema"""
+        """
+        Retorna diagnóstico completo do sistema - VERSÃO SIMPLIFICADA E ROBUSTA
+        Esta versão evita erros comuns de atributos não encontrados
+        """
+        resultado = {
+            'timestamp': datetime.now().isoformat(),
+            'versao_api': '2.0.0',
+            'status': 'OK'
+        }
+        
+        # 1. Informações da base de notas (Google Sheets)
         try:
-            base_status = self.verificar_saude_banco()
-            registros_status = self.verificar_registros_nf()
-            
-            conectividade = {
-                'google_sheets': self.worksheet_base_notas is not None,
-                'sqlite': self.sqlite_manager is not None,
-                'planilhas_configuradas': all([self.worksheet_base_notas, self.worksheet_registros_nf]),
-                'spreadsheet_acessivel': self.spreadsheet is not None
+            self._rate_limit()
+            records = self.worksheet_base_notas.get_all_records()
+            resultado['base_notas'] = {
+                'total_registros': len(records),
+                'planilha': self.NOME_PLANILHA_BASE,
+                'status': 'OK'
             }
+        except Exception as e:
+            logger.error(f"Erro ao ler base_notas: {e}")
+            resultado['base_notas'] = {
+                'total_registros': 0,
+                'planilha': self.NOME_PLANILHA_BASE,
+                'status': 'ERRO',
+                'erro': str(e)
+            }
+        
+        # 2. Informações dos registros de validação
+        try:
+            registros = self.worksheet_registros_nf.get_all_values()
+            total_registros = len(registros) - 1 if len(registros) > 1 else 0
             
-            # Tamanho do SQLite
+            # Estatísticas por decisão
+            decisao_stats = {}
+            if len(registros) > 1:
+                for row in registros[1:]:
+                    if len(row) >= 6:
+                        decisao = row[5] if row[5] else 'Não registrada'
+                        decisao_stats[decisao] = decisao_stats.get(decisao, 0) + 1
+            
+            resultado['registros_nf'] = {
+                'total_registros': total_registros,
+                'planilha': self.NOME_PLANILHA_REGISTROS,
+                'estatisticas_decisoes': decisao_stats,
+                'status': 'OK'
+            }
+        except Exception as e:
+            logger.error(f"Erro ao ler registros_nf: {e}")
+            resultado['registros_nf'] = {
+                'total_registros': 0,
+                'planilha': self.NOME_PLANILHA_REGISTROS,
+                'status': 'ERRO',
+                'erro': str(e)
+            }
+        
+        # 3. Informações do SQLite
+        try:
+            df = self.sqlite_manager.get_base_notas_data()
+            sqlite_count = len(df)
+            
+            # Tamanho do arquivo SQLite
             sqlite_tamanho = "Desconhecido"
             try:
                 if os.path.exists(self.sqlite_db_path):
@@ -505,48 +554,47 @@ class DatabaseManager:
             except:
                 pass
             
-            # Gerar recomendações
-            recomendacoes = []
-            sheets_count = base_status.get('base_notas', {}).get('sheets_count', 0)
-            sqlite_count = base_status.get('base_notas', {}).get('sqlite_count', 0)
-            
-            if sheets_count != sqlite_count:
-                recomendacoes.append(f"Inconsistência detectada: Google Sheets ({sheets_count}) vs SQLite ({sqlite_count}). Execute /sync.")
-            
-            if registros_status.get('total_registros', 0) == 0:
-                recomendacoes.append("Nenhum registro de validação encontrado. Faça algumas validações para testar.")
-            
-            if sheets_count == 0:
-                recomendacoes.append("Planilha Base_de_notas vazia. Faça upload de um arquivo Excel.")
-            
-            if not recomendacoes:
-                recomendacoes.append("Sistema saudável. Nenhuma ação necessária.")
-            
-            return {
-                'timestamp': datetime.now().isoformat(),
-                'versao_api': '2.0.0',
-                'conectividade': conectividade,
-                'base_notas': base_status.get('base_notas', {}),
-                'registros_nf': {
-                    'planilha_nome': registros_status.get('worksheet_name', self.NOME_PLANILHA_REGISTROS),
-                    'total_registros': registros_status.get('total_registros', 0),
-                    'estatisticas_decisoes': registros_status.get('estatisticas_decisoes', {}),
-                    'status': registros_status.get('status', 'Desconhecido')
-                },
-                'configuracoes': {
-                    'nome_planilha_base': self.NOME_PLANILHA_BASE,
-                    'nome_planilha_registros': self.NOME_PLANILHA_REGISTROS,
-                    'sqlite_path': self.sqlite_db_path,
-                    'sqlite_tamanho': sqlite_tamanho
-                },
-                'recomendacoes': recomendacoes,
-                'saude_geral': 'OK' if conectividade['planilhas_configuradas'] and sheets_count == sqlite_count else 'ATENÇÃO'
+            resultado['sqlite'] = {
+                'total_registros': sqlite_count,
+                'arquivo': self.sqlite_db_path,
+                'tamanho': sqlite_tamanho,
+                'status': 'OK'
             }
-            
         except Exception as e:
-            logger.error(f"Erro no diagnóstico completo: {e}")
-            return {
-                'error': str(e),
-                'saude_geral': 'ERRO',
-                'timestamp': datetime.now().isoformat()
+            logger.error(f"Erro ao ler SQLite: {e}")
+            resultado['sqlite'] = {
+                'total_registros': 0,
+                'status': 'ERRO',
+                'erro': str(e)
             }
+        
+        # 4. Verificação de sincronização
+        sheets_total = resultado.get('base_notas', {}).get('total_registros', 0)
+        sqlite_total = resultado.get('sqlite', {}).get('total_registros', 0)
+        resultado['sincronizado'] = sheets_total == sqlite_total
+        
+        # 5. Conectividade
+        resultado['conectividade'] = {
+            'google_sheets': self.worksheet_base_notas is not None,
+            'sqlite': self.sqlite_manager is not None,
+            'planilhas_configuradas': all([self.worksheet_base_notas, self.worksheet_registros_nf])
+        }
+        
+        # 6. Recomendações
+        recomendacoes = []
+        if sheets_total != sqlite_total:
+            recomendacoes.append(f"Inconsistência detectada: Google Sheets ({sheets_total}) vs SQLite ({sqlite_total}). Execute /sync.")
+        
+        if resultado.get('registros_nf', {}).get('total_registros', 0) == 0:
+            recomendacoes.append("Nenhum registro de validação encontrado. Faça algumas validações para testar.")
+        
+        if sheets_total == 0:
+            recomendacoes.append("Planilha Base_de_notas vazia. Faça upload de um arquivo Excel.")
+        
+        if not recomendacoes:
+            recomendacoes.append("✅ Sistema saudável. Nenhuma ação necessária.")
+        
+        resultado['recomendacoes'] = recomendacoes
+        resultado['saude_geral'] = 'OK' if sheets_total == sqlite_total and sheets_total > 0 else 'ATENÇÃO'
+        
+        return resultado
