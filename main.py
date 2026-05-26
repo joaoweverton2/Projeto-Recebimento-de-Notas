@@ -86,11 +86,19 @@ def verificar_nota():
             'decisao': resultado['decisao']
         }
         
-        try:
-            db.criar_registro(registro)
-            logger.info(f"✅ Registro salvo: {registro['decisao']}")
-        except Exception as e:
-            logger.error(f"❌ Erro ao salvar registro: {str(e)}")
+        # Tenta salvar o registro com retry
+        max_retries = 3
+        for tentativa in range(max_retries):
+            try:
+                db.criar_registro(registro)
+                logger.info(f"✅ Registro salvo: {registro['decisao']}")
+                break
+            except Exception as e:
+                if tentativa < max_retries - 1:
+                    logger.warning(f"Tentativa {tentativa + 1} falhou ao salvar registro. Tentando novamente...")
+                    time.sleep(2)
+                else:
+                    logger.error(f"❌ Erro ao salvar registro após {max_retries} tentativas: {str(e)}")
 
         return jsonify(resultado)
 
@@ -136,10 +144,6 @@ def atualizar_base():
         
         # Atualiza tanto Google Sheets quanto SQLite
         db.update_base_notas_data(df_novo)
-        
-        # Limpa qualquer cache do validador (se existir)
-        if hasattr(validador, 'limpar_cache'):
-            validador.limpar_cache()
         
         registros_count = len(df_novo)
         logger.info(f"✅ Base atualizada com sucesso! {registros_count} registros carregados")
@@ -230,6 +234,77 @@ def sincronizar_bancos():
         logger.error(f"❌ Erro na sincronização: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/diagnostico-registros', methods=['GET'])
+def diagnostico_registros():
+    """Endpoint para diagnosticar problemas na worksheet registros_nf"""
+    try:
+        # Verifica status dos registros
+        status = db.verificar_registros_nf()
+        
+        # Testa escrita na worksheet
+        test_result = None
+        if status.get('existe', False):
+            try:
+                # Tenta escrever um registro de teste
+                registro_teste = {
+                    'uf': 'TESTE',
+                    'nfe': 999999,
+                    'pedido': 999999,
+                    'data_recebimento': datetime.now().strftime('%Y-%m-%d'),
+                    'data_planejamento': 'TESTE',
+                    'decisao': 'TESTE_SISTEMA',
+                    'criado_em': datetime.now().isoformat()
+                }
+                
+                # Tenta salvar o registro de teste
+                resultado = db.criar_registro(registro_teste)
+                
+                test_result = {
+                    'success': True,
+                    'message': 'Teste de escrita realizado com sucesso',
+                    'registro_teste': resultado
+                }
+            except Exception as e:
+                test_result = {
+                    'success': False,
+                    'error': str(e)
+                }
+        
+        return jsonify({
+            'diagnostico': status,
+            'teste_escrita': test_result,
+            'recomendacao': 'Verifique as permissões da planilha no Google Sheets' if not status.get('existe') else 'Sistema funcionando corretamente'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Erro no diagnóstico: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/testar-registro', methods=['POST'])
+def testar_registro():
+    """Endpoint para testar criação de registro manualmente"""
+    try:
+        registro_teste = {
+            'uf': request.json.get('uf', 'SP'),
+            'nfe': int(request.json.get('nfe', 123456)),
+            'pedido': int(request.json.get('pedido', 789012)),
+            'data_recebimento': request.json.get('data_recebimento', datetime.now().strftime('%Y-%m-%d')),
+            'data_planejamento': request.json.get('data_planejamento', '2025/Dezembro'),
+            'decisao': request.json.get('decisao', 'TESTE_MANUAL')
+        }
+        
+        resultado = db.criar_registro(registro_teste)
+        
+        return jsonify({
+            'success': True,
+            'registro': resultado,
+            'mensagem': 'Registro de teste criado com sucesso no Google Sheets'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Erro no teste: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/stats', methods=['GET'])
 def estatisticas():
     """Endpoint para estatísticas do sistema"""
@@ -259,6 +334,7 @@ def estatisticas():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
+    import time
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
