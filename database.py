@@ -175,7 +175,7 @@ class DatabaseManager:
             logger.error(f"❌ Falha na reconexão: {e}")
 
     def criar_registro(self, data: RegistroNF) -> Dict[str, Any]:
-        """Cria um novo registro na planilha registros_nf com retry automático"""
+        """Cria um novo registro no SQLite e tenta sincronizar com Google Sheets"""
         try:
             registro = {
                 "uf": data["uf"].upper(),
@@ -187,31 +187,28 @@ class DatabaseManager:
                 "criado_em": datetime.now().isoformat()
             }
             
-            if not self.worksheet_registros_nf:
-                raise Exception("Worksheet registros_nf não disponível")
+            # 1. Salva no SQLite (Persistência garantida)
+            self.sqlite_manager.salvar_registro_sqlite(registro)
+            logger.info(f"✅ Registro salvo no SQLite: {registro['uf']}/{registro['nfe']}")
             
-            row_data = list(registro.values())
-            
-            # Tenta salvar com retry
-            max_retries = 3
-            for tentativa in range(max_retries):
-                try:
+            # 2. Tenta salvar no Google Sheets (Opcional/Backup)
+            try:
+                if self.worksheet_registros_nf:
+                    row_data = [
+                        registro["uf"], registro["nfe"], registro["pedido"],
+                        registro["data_recebimento"], registro["data_planejamento"],
+                        registro["decisao"], registro["criado_em"]
+                    ]
                     self._rate_limit()
                     self.worksheet_registros_nf.append_row(row_data, value_input_option='USER_ENTERED')
-                    logger.info(f"✅ Registro salvo em '{self.NOME_PLANILHA_REGISTROS}': {registro['uf']}/{registro['nfe']}")
-                    self._falhas_consecutivas = 0
-                    return registro
-                except gspread.exceptions.APIError as e:
-                    if tentativa < max_retries - 1:
-                        logger.warning(f"Tentativa {tentativa + 1} falhou. Tentando novamente...")
-                        time.sleep(2 ** tentativa)
-                        self._reconectar_google_sheets()
-                    else:
-                        raise e
+                    logger.info(f"✅ Registro sincronizado com Google Sheets")
+            except Exception as e:
+                logger.warning(f"⚠️ Falha ao sincronizar com Google Sheets (registro mantido no SQLite): {e}")
+            
+            return registro
             
         except Exception as e:
             logger.error(f"❌ Erro ao criar registro: {str(e)}")
-            self._falhas_consecutivas += 1
             raise
 
     def buscar_registro(self, uf: str, nfe: int) -> Optional[Dict]:
@@ -262,10 +259,31 @@ class DatabaseManager:
             return None
 
     def listar_registros(self) -> List[Dict]:
-        """Lista todos os registros da planilha registros_nf"""
+        """Lista todos os registros - Prioriza SQLite para velocidade e confiabilidade"""
         try:
-            self._rate_limit()
-            return self.worksheet_registros_nf.get_all_records()
+            registros = self.sqlite_manager.listar_registros_sqlite()
+            if not registros:
+                logger.info("SQLite sem registros, buscando no Google Sheets para restaurar...")
+                try:
+                    self._rate_limit()
+                    registros_sheets = self.worksheet_registros_nf.get_all_records()
+                    if registros_sheets:
+                        for reg in registros_sheets:
+                            # Ajusta tipos se necessário
+                            reg_clean = {
+                                "uf": str(reg.get("uf", "")),
+                                "nfe": int(reg.get("nfe", 0)),
+                                "pedido": int(reg.get("pedido", 0)),
+                                "data_recebimento": str(reg.get("data_recebimento", "")),
+                                "data_planejamento": str(reg.get("data_planejamento", "")),
+                                "decisao": str(reg.get("decisao", "")),
+                                "criado_em": str(reg.get("criado_em", ""))
+                            }
+                            self.sqlite_manager.salvar_registro_sqlite(reg_clean)
+                        return self.sqlite_manager.listar_registros_sqlite()
+                except Exception as e:
+                    logger.error(f"Erro ao restaurar registros do Sheets: {e}")
+            return registros
         except Exception as e:
             logger.error(f"Erro ao listar registros: {str(e)}")
             return []

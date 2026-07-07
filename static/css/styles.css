@@ -109,6 +109,18 @@ input[type="date"] {
     border-radius: var(--border-radius);
     font-size: 1rem;
     transition: var(--transition);
+    overflow: hidden; /* Remove barras de rolagem desnecessárias */
+}
+
+/* Remove setas de incremento/decremento em inputs numéricos para evitar scroll lateral */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
 }
 
 input:focus {
